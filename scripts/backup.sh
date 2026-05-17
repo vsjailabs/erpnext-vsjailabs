@@ -1,12 +1,21 @@
 #!/usr/bin/env bash
 # backup.sh — create an ERPNext site backup and optionally copy to GCS
-# Run this on the VM: sudo bash /opt/erpnext/scripts/backup.sh [gs://your-bucket]
+# Run on the VM: sudo bash /opt/erpnext/scripts/backup.sh [gs://your-bucket]
+# The backup bucket name can also be read from instance metadata if no argument is given.
 set -euo pipefail
 
 COMPOSE_DIR="/opt/erpnext/frappe_docker"
 BACKUP_DIR="/mnt/erpnext-data/backups"
-GCS_BUCKET="${1:-}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
+GCS_BUCKET="${1:-}"
+if [ -z "${GCS_BUCKET}" ]; then
+  BUCKET_NAME=$(curl -sf -H "Metadata-Flavor: Google" \
+    "http://metadata.google.internal/computeMetadata/v1/instance/attributes/backup_bucket" 2>/dev/null || echo "")
+  if [ -n "${BUCKET_NAME}" ]; then
+    GCS_BUCKET="gs://${BUCKET_NAME}"
+  fi
+fi
 
 cd "${COMPOSE_DIR}"
 

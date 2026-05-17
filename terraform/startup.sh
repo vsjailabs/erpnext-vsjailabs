@@ -4,15 +4,39 @@ exec > /var/log/erpnext-startup.log 2>&1
 
 echo "[$(date)] Starting ERPNext VM setup..."
 
-# ── System update ─────────────────────────────────────────────────────────────
+# ── Helper: read instance metadata ───────────────────────────────────────────
+
+get_meta() {
+  curl -sf -H "Metadata-Flavor: Google" \
+    "http://metadata.google.internal/computeMetadata/v1/instance/attributes/$1" 2>/dev/null || echo ""
+}
+
+# ── Helper: read from Secret Manager (no gcloud needed) ─────────────────────
+
+get_secret() {
+  local project_id secret_name access_token
+  project_id=$(curl -sf -H "Metadata-Flavor: Google" \
+    "http://metadata.google.internal/computeMetadata/v1/project/project-id")
+  secret_name="$1"
+  access_token=$(curl -sf -H "Metadata-Flavor: Google" \
+    "http://metadata.google.internal/computeMetadata/v1/instance/service-account/default/token" \
+    | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])')
+  curl -sf -H "Authorization: Bearer ${access_token}" \
+    "https://secretmanager.googleapis.com/v1/projects/${project_id}/secrets/${secret_name}/versions/latest:access" \
+    | python3 -c 'import sys,json,base64; print(base64.b64decode(json.load(sys.stdin)["payload"]["data"]).decode())'
+}
+
+# ── System packages ──────────────────────────────────────────────────────────
+
 apt-get update -y
 apt-get install -y \
   curl git ca-certificates gnupg lsb-release \
   python3-pip python3-dev python3-setuptools \
   build-essential libjpeg-dev libffi-dev libssl-dev \
-  nfs-common
+  nfs-common cron
 
-# ── Mount data disk ───────────────────────────────────────────────────────────
+# ── Mount data disk ──────────────────────────────────────────────────────────
+
 DATA_DEVICE="/dev/disk/by-id/google-erpnext-data"
 DATA_MOUNT="/mnt/erpnext-data"
 
@@ -23,9 +47,13 @@ fi
 
 mkdir -p "${DATA_MOUNT}"
 mount "${DATA_DEVICE}" "${DATA_MOUNT}" || true
-echo "${DATA_DEVICE}  ${DATA_MOUNT}  ext4  defaults,nofail  0  2" >> /etc/fstab
 
-# ── Docker ────────────────────────────────────────────────────────────────────
+if ! grep -q "google-erpnext-data" /etc/fstab; then
+  echo "${DATA_DEVICE}  ${DATA_MOUNT}  ext4  defaults,nofail  0  2" >> /etc/fstab
+fi
+
+# ── Install Docker ───────────────────────────────────────────────────────────
+
 if ! command -v docker &>/dev/null; then
   install -m 0755 -d /etc/apt/keyrings
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
@@ -42,40 +70,38 @@ if ! command -v docker &>/dev/null; then
   systemctl enable --now docker
 fi
 
-# ── Clone deployment repo ─────────────────────────────────────────────────────
+# ── Clone frappe_docker ──────────────────────────────────────────────────────
+
 DEPLOY_DIR="/opt/erpnext"
 mkdir -p "${DEPLOY_DIR}"
 
-# Use frappe_docker official compose
 cd "${DEPLOY_DIR}"
 if [ ! -d frappe_docker ]; then
   git clone --depth 1 https://github.com/frappe/frappe_docker.git
 fi
 cd frappe_docker
 
-# ── Configure environment ─────────────────────────────────────────────────────
-# Read secrets from GCP metadata (set during terraform apply via instance metadata)
-META="http://metadata.google.internal/computeMetadata/v1/instance/attributes"
-HEADERS="-H 'Metadata-Flavor: Google'"
+# ── Read secrets from Secret Manager + metadata ─────────────────────────────
 
-get_meta() {
-  curl -sf -H "Metadata-Flavor: Google" \
-    "http://metadata.google.internal/computeMetadata/v1/instance/attributes/$1" 2>/dev/null || echo ""
-}
+echo "[$(date)] Fetching secrets from Secret Manager..."
+DB_ROOT_PASS=$(get_secret "erpnext-db-root-password" || echo "")
+DB_PASS=$(get_secret "erpnext-db-password" || echo "")
+ADMIN_PASS=$(get_secret "erpnext-admin-password" || echo "")
 
-DB_ROOT_PASS=$(get_meta db_root_password)
-DB_PASS=$(get_meta db_password)
-ADMIN_PASS=$(get_meta admin_password)
 ERPNEXT_VER=$(get_meta erpnext_version)
 DOMAIN_NAME=$(get_meta domain)
 ADMIN_EMAIL=$(get_meta admin_email)
+BACKUP_BUCKET=$(get_meta backup_bucket)
 
 : "${DB_ROOT_PASS:=ChangeMe_RootPass123}"
 : "${DB_PASS:=ChangeMe_DbPass123}"
 : "${ADMIN_PASS:=ChangeMe_AdminPass123}"
 : "${ERPNEXT_VER:=version-15}"
 
-# Symlink data volumes to the persistent disk
+echo "[$(date)] Secrets loaded successfully."
+
+# ── Symlink data volumes to persistent disk ──────────────────────────────────
+
 mkdir -p "${DATA_MOUNT}"/{mariadb,redis,sites,logs,backups}
 mkdir -p volumes
 ln -sfn "${DATA_MOUNT}/mariadb"  volumes/db
@@ -83,7 +109,8 @@ ln -sfn "${DATA_MOUNT}/redis"    volumes/redis-cache
 ln -sfn "${DATA_MOUNT}/sites"    volumes/sites
 ln -sfn "${DATA_MOUNT}/logs"     volumes/logs
 
-# Write .env
+# ── Write .env ───────────────────────────────────────────────────────────────
+
 cat > "${DEPLOY_DIR}/frappe_docker/.env" <<EOF
 ERPNEXT_VERSION=${ERPNEXT_VER}
 FRAPPE_VERSION=${ERPNEXT_VER}
@@ -93,7 +120,8 @@ SITES=\`erp.localhost\`
 INSTALL_APPS=erpnext
 EOF
 
-# ── Start services ────────────────────────────────────────────────────────────
+# ── Start Docker services ───────────────────────────────────────────────────
+
 docker compose -f compose.yaml \
                -f overrides/compose.mariadb.yaml \
                -f overrides/compose.redis.yaml \
@@ -106,11 +134,11 @@ docker compose -f compose.yaml \
                --env-file .env \
                up -d
 
-# Wait for MariaDB
 echo "[$(date)] Waiting for MariaDB to be ready..."
 sleep 30
 
-# ── Create site ───────────────────────────────────────────────────────────────
+# ── Create ERPNext site ──────────────────────────────────────────────────────
+
 docker compose -f compose.yaml \
                -f overrides/compose.mariadb.yaml \
                -f overrides/compose.redis.yaml \
@@ -123,10 +151,10 @@ docker compose -f compose.yaml \
                --admin-password "${ADMIN_PASS}" \
                --install-app erpnext || true
 
-# ── Nginx reverse proxy ───────────────────────────────────────────────────────
+# ── Nginx reverse proxy ─────────────────────────────────────────────────────
+
 apt-get install -y nginx
 
-# Write nginx config
 if [ -n "${DOMAIN_NAME}" ]; then
   SERVER_NAME="${DOMAIN_NAME}"
 else
@@ -134,19 +162,38 @@ else
 fi
 
 cat > /etc/nginx/sites-available/erpnext <<NGINX
+upstream erpnext_backend {
+    server 127.0.0.1:8080;
+    keepalive 32;
+}
+
 server {
     listen 80;
     server_name ${SERVER_NAME};
 
     client_max_body_size 50m;
+    proxy_read_timeout   600s;
+    proxy_send_timeout   600s;
+
+    add_header X-Frame-Options       SAMEORIGIN;
+    add_header X-Content-Type-Options nosniff;
+    add_header Referrer-Policy       strict-origin-when-cross-origin;
 
     location / {
-        proxy_pass         http://127.0.0.1:8080;
-        proxy_set_header   Host \$host;
-        proxy_set_header   X-Real-IP \$remote_addr;
-        proxy_set_header   X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header   X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 600s;
+        proxy_pass          http://erpnext_backend;
+        proxy_http_version  1.1;
+        proxy_set_header    Host              \$host;
+        proxy_set_header    X-Real-IP         \$remote_addr;
+        proxy_set_header    X-Forwarded-For   \$proxy_add_x_forwarded_for;
+        proxy_set_header    X-Forwarded-Proto \$scheme;
+        proxy_set_header    Upgrade           \$http_upgrade;
+        proxy_set_header    Connection        "upgrade";
+    }
+
+    location /assets/ {
+        proxy_pass         http://erpnext_backend;
+        proxy_cache_valid  200 1d;
+        add_header         Cache-Control "public, max-age=86400";
     }
 }
 NGINX
@@ -155,7 +202,8 @@ ln -sf /etc/nginx/sites-available/erpnext /etc/nginx/sites-enabled/erpnext
 rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl restart nginx
 
-# ── Optional: Let's Encrypt SSL ───────────────────────────────────────────────
+# ── Optional: Let's Encrypt SSL (when domain is configured) ─────────────────
+
 if [ -n "${DOMAIN_NAME}" ] && [ -n "${ADMIN_EMAIL}" ]; then
   apt-get install -y certbot python3-certbot-nginx
   certbot --nginx \
@@ -163,6 +211,45 @@ if [ -n "${DOMAIN_NAME}" ] && [ -n "${ADMIN_EMAIL}" ]; then
     --agree-tos \
     --email "${ADMIN_EMAIL}" \
     -d "${DOMAIN_NAME}" || true
+fi
+
+# ── Backup script + daily cron ───────────────────────────────────────────────
+
+mkdir -p /opt/erpnext/scripts
+
+cat > /opt/erpnext/scripts/backup.sh <<'BACKUP'
+#!/usr/bin/env bash
+set -euo pipefail
+
+COMPOSE_DIR="/opt/erpnext/frappe_docker"
+BACKUP_DIR="/mnt/erpnext-data/backups"
+GCS_BUCKET="${1:-}"
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
+cd "${COMPOSE_DIR}"
+
+docker compose -f compose.yaml \
+               -f overrides/compose.mariadb.yaml \
+               -f overrides/compose.redis.yaml \
+               --env-file .env \
+               exec -T backend \
+               bench --site erp.localhost backup --with-files
+
+echo "[${TIMESTAMP}] Backup created in ${BACKUP_DIR}"
+
+if [ -n "${GCS_BUCKET}" ]; then
+  gsutil -m rsync -r "${BACKUP_DIR}" "${GCS_BUCKET}/backups/"
+  echo "Backed up to ${GCS_BUCKET}/backups/"
+fi
+BACKUP
+
+chmod +x /opt/erpnext/scripts/backup.sh
+
+if [ -n "${BACKUP_BUCKET}" ] && [ ! -f /etc/cron.d/erpnext-backup ]; then
+  cat > /etc/cron.d/erpnext-backup <<CRON
+0 2 * * * root /opt/erpnext/scripts/backup.sh gs://${BACKUP_BUCKET} >> /var/log/erpnext-backup.log 2>&1
+CRON
+  echo "[$(date)] Daily backup cron installed (2 AM → gs://${BACKUP_BUCKET})"
 fi
 
 echo "[$(date)] ERPNext setup complete!"

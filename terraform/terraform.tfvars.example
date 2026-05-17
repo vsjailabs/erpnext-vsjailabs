@@ -1,16 +1,22 @@
-# Copy this file to terraform.tfvars and fill in your values
-# Do NOT commit terraform.tfvars to version control
+# Copy this file to terraform.tfvars and fill in your values.
+# Do NOT commit terraform.tfvars to version control — it contains secrets.
 
-project_id        = "project-75134527-836d-48b4-9d7"
+project_id        = "your-gcp-project-id"
 region            = "us-central1"
 zone              = "us-central1-a"
 machine_type      = "e2-standard-4"
 data_disk_size_gb = 100
 erpnext_version   = "version-15"
 
-# Optional: set a real domain for SSL
+# Network
+subnet_cidr = "10.0.0.0/24"
+
+# Optional: set a real domain for SSL (leave empty for IP-only access)
 domain      = ""
 admin_email = "your-email@example.com"
+
+# Backups
+backup_retention_days = 30
 
 # Change all passwords before deploying!
 db_root_password = "CHANGE_ME_strong_root_pass"

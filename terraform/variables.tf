@@ -1,7 +1,6 @@
 variable "project_id" {
   description = "GCP project ID"
   type        = string
-  default     = "project-75134527-836d-48b4-9d7"
 }
 
 variable "region" {
@@ -41,10 +40,24 @@ variable "domain" {
 }
 
 variable "admin_email" {
-  description = "Admin email for SSL certificate (Let's Encrypt)"
+  description = "Admin email for alerts and SSL certificates"
   type        = string
   default     = "admin@example.com"
 }
+
+variable "subnet_cidr" {
+  description = "CIDR range for the VPC subnet"
+  type        = string
+  default     = "10.0.0.0/24"
+}
+
+variable "backup_retention_days" {
+  description = "Number of days to retain backups in GCS"
+  type        = number
+  default     = 30
+}
+
+# ── Sensitive variables ──────────────────────────────────────────────────────
 
 variable "db_root_password" {
   description = "MariaDB root password"

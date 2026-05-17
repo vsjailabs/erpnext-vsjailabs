@@ -3,7 +3,7 @@
 # Requires: gcloud auth login, project set
 set -euo pipefail
 
-PROJECT="${1:-project-75134527-836d-48b4-9d7}"
+PROJECT="${1:-$(gcloud config get-value project 2>/dev/null)}"
 ZONE="${2:-us-central1-a}"
 
 gcloud compute start-iap-tunnel erpnext-vm 80 \
