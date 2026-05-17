@@ -131,10 +131,22 @@ Set `domain = "erp.yourdomain.com"` and `admin_email = "you@example.com"` in
 - **Automated backups** — daily to GCS with 30-day retention
 - **Monitoring** — uptime checks, CPU/disk alerts via email
 
+## Documentation
+
+- **[End User Guide](docs/ERPNext_End_User_Guide_v1.0.docx)** — Enterprise-grade DOCX covering all 19 ERPNext roles, module access matrices, permissions, common workflows (P2P, O2C, leave, expense), security best practices, FAQ, and glossary.
+
+To regenerate the guide:
+```bash
+python3 docs/generate_user_guide.py
+```
+
 ## File Layout
 
 ```
 .
+├── docs/
+│   ├── ERPNext_End_User_Guide_v1.0.docx  # End user guide (19 roles)
+│   └── generate_user_guide.py            # Script to regenerate the guide
 ├── terraform/
 │   ├── main.tf              # Provider + API enablements
 │   ├── network.tf           # VPC, subnet, Cloud NAT, firewall rules
