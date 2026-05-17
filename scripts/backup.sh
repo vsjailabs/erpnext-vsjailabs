@@ -22,6 +22,7 @@ cd "${COMPOSE_DIR}"
 docker compose -f compose.yaml \
                -f overrides/compose.mariadb.yaml \
                -f overrides/compose.redis.yaml \
+               -f overrides/compose.noproxy.yaml \
                --env-file .env \
                exec -T backend \
                bench --site erp.localhost backup --with-files

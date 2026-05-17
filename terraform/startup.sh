@@ -14,16 +14,33 @@ get_meta() {
 # ── Helper: read from Secret Manager (no gcloud needed) ─────────────────────
 
 get_secret() {
-  local project_id secret_name access_token
+  local project_id secret_name access_token result attempt
   project_id=$(curl -sf -H "Metadata-Flavor: Google" \
     "http://metadata.google.internal/computeMetadata/v1/project/project-id")
   secret_name="$1"
-  access_token=$(curl -sf -H "Metadata-Flavor: Google" \
-    "http://metadata.google.internal/computeMetadata/v1/instance/service-account/default/token" \
-    | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])')
-  curl -sf -H "Authorization: Bearer ${access_token}" \
-    "https://secretmanager.googleapis.com/v1/projects/${project_id}/secrets/${secret_name}/versions/latest:access" \
-    | python3 -c 'import sys,json,base64; print(base64.b64decode(json.load(sys.stdin)["payload"]["data"]).decode())'
+
+  for attempt in 1 2 3 4 5; do
+    access_token=$(curl -sf -H "Metadata-Flavor: Google" \
+      "http://metadata.google.internal/computeMetadata/v1/instance/service-account/default/token" \
+      | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])') || true
+
+    if [ -n "${access_token}" ]; then
+      result=$(curl -sf -H "Authorization: Bearer ${access_token}" \
+        "https://secretmanager.googleapis.com/v1/projects/${project_id}/secrets/${secret_name}/versions/latest:access" \
+        | python3 -c 'import sys,json,base64; print(base64.b64decode(json.load(sys.stdin)["payload"]["data"]).decode())') || true
+
+      if [ -n "${result}" ]; then
+        echo "${result}"
+        return 0
+      fi
+    fi
+
+    echo "[$(date)] Secret fetch attempt ${attempt}/5 for ${secret_name} failed, retrying in 10s..." >&2
+    sleep 10
+  done
+
+  echo "[$(date)] WARNING: Failed to fetch secret ${secret_name} after 5 attempts" >&2
+  return 1
 }
 
 # ── System packages ──────────────────────────────────────────────────────────
@@ -125,12 +142,14 @@ EOF
 docker compose -f compose.yaml \
                -f overrides/compose.mariadb.yaml \
                -f overrides/compose.redis.yaml \
+               -f overrides/compose.noproxy.yaml \
                --env-file .env \
                pull
 
 docker compose -f compose.yaml \
                -f overrides/compose.mariadb.yaml \
                -f overrides/compose.redis.yaml \
+               -f overrides/compose.noproxy.yaml \
                --env-file .env \
                up -d
 
@@ -142,6 +161,7 @@ sleep 30
 docker compose -f compose.yaml \
                -f overrides/compose.mariadb.yaml \
                -f overrides/compose.redis.yaml \
+               -f overrides/compose.noproxy.yaml \
                --env-file .env \
                exec -T backend \
                bench new-site erp.localhost \
@@ -231,6 +251,7 @@ cd "${COMPOSE_DIR}"
 docker compose -f compose.yaml \
                -f overrides/compose.mariadb.yaml \
                -f overrides/compose.redis.yaml \
+               -f overrides/compose.noproxy.yaml \
                --env-file .env \
                exec -T backend \
                bench --site erp.localhost backup --with-files
