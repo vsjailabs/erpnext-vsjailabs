@@ -1,0 +1,18 @@
+# Copy this file to terraform.tfvars and fill in your values
+# Do NOT commit terraform.tfvars to version control
+
+project_id        = "project-75134527-836d-48b4-9d7"
+region            = "us-central1"
+zone              = "us-central1-a"
+machine_type      = "e2-standard-4"
+data_disk_size_gb = 100
+erpnext_version   = "version-15"
+
+# Optional: set a real domain for SSL
+domain      = ""
+admin_email = "your-email@example.com"
+
+# Change all passwords before deploying!
+db_root_password = "CHANGE_ME_strong_root_pass"
+db_password      = "CHANGE_ME_strong_db_pass"
+admin_password   = "CHANGE_ME_strong_admin_pass"
