@@ -35,7 +35,7 @@ ORANGE_BG  = "FFF8E1"
 RED_BG     = "FFEBEE"
 
 TODAY = datetime.date.today().strftime("%B %d, %Y")
-VERSION = "1.0"
+VERSION = "1.1"
 DOC_TITLE = "ERPNext Portal — End User Guide"
 DOC_SUBTITLE = "Role-Based Access & Operations Manual"
 COMPANY = "VSJ AI Labs"
@@ -313,7 +313,7 @@ def generate():
             ["Classification", CLASSIFICATION],
             ["ERPNext Version", "v15 (Latest Stable)"],
             ["Hosting", "Google Cloud Platform (Compute Engine)"],
-            ["Portal URL", "http://34.121.203.2"],
+            ["Portal URL", "https://erp.vsjailabs.in"],
         ]
     )
 
@@ -328,7 +328,8 @@ def generate():
     make_table(doc,
         ["Version", "Date", "Author", "Changes"],
         [
-            ["1.0", TODAY, AUTHOR, "Initial release — all roles documented"],
+            ["1.0", "May 17, 2026", AUTHOR, "Initial release — all roles documented"],
+            ["1.1", TODAY, AUTHOR, "Updated portal URL to https://erp.vsjailabs.in with SSL"],
         ]
     )
 
@@ -387,17 +388,16 @@ def generate():
     make_table(doc,
         ["Environment", "URL", "Status"],
         [
-            ["Staging", "http://34.121.203.2", "Active"],
-            ["Production", "TBD (custom domain pending)", "Planned"],
+            ["Staging", "https://erp.vsjailabs.in", "Active"],
         ],
         badge_col=2,
-        badge_map={"Active": (GREEN, GREEN_BG), "Planned": (ORANGE, ORANGE_BG)}
+        badge_map={"Active": (GREEN, GREEN_BG)}
     )
 
     add_heading(doc, "4.2 Login Steps", level=2)
     add_body(doc, "Follow these steps to access the ERPNext portal:")
     add_bullet(doc, "Step 1: Open your web browser (Chrome, Firefox, Edge, or Safari recommended)")
-    add_bullet(doc, "Step 2: Navigate to the portal URL: http://34.121.203.2")
+    add_bullet(doc, "Step 2: Navigate to the portal URL: https://erp.vsjailabs.in")
     add_bullet(doc, "Step 3: Enter your Username (email address provided by your administrator)")
     add_bullet(doc, "Step 4: Enter your Password")
     add_bullet(doc, "Step 5: Click the 'Login' button")
@@ -1349,7 +1349,7 @@ def generate():
 
     # ── Save ─────────────────────────────────────────────────────────────
 
-    output_path = "/Users/tpe/VSJWORK/erpnext-vsjailabs/docs/ERPNext_End_User_Guide_v1.0.docx"
+    output_path = "/Users/tpe/VSJWORK/erpnext-vsjailabs/docs/ERPNext_End_User_Guide_v1.1.docx"
     doc.save(output_path)
     print(f"Document saved: {output_path}")
     print(f"Sections: 30")
