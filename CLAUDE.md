@@ -9,7 +9,8 @@ Hardened staging environment with custom VPC, Secret Manager, IAP-only SSH, auto
 
 - **VM:** `e2-standard-4` on custom VPC (`erpnext-vpc`) with Cloud NAT
 - **App:** frappe_docker (Docker Compose) with MariaDB + Redis in containers
-- **Proxy:** Host-level Nginx reverse proxy (port 80 → localhost:8080)
+- **Proxy:** Host-level Nginx reverse proxy (port 80/443 → localhost:8080)
+- **Domain:** `erp.vsjailabs.in` (HTTPS via Let's Encrypt)
 - **Secrets:** GCP Secret Manager (3 secrets: db-root, db, admin passwords)
 - **State:** GCS remote backend (`gs://erpnext-staging-tf-state`)
 - **Backups:** Daily 2 AM cron → GCS bucket (30-day retention)
@@ -41,12 +42,13 @@ Every `docker compose` invocation needs all of these:
 ```
 Without `compose.noproxy.yaml`, port 8080 is not exposed and Nginx gets 502.
 
-### Nginx Host header must be `erp.localhost`
+### Nginx Host header must match the ERPNext site name
 ERPNext is multi-tenant — it only responds to the configured site name. Use:
 ```
-proxy_set_header Host erp.localhost;
+proxy_set_header Host erp.vsjailabs.in;
 ```
 NOT `$host` (which would send the IP address and get 404).
+The startup.sh uses `${SITE_NAME}` which resolves to the domain (or `erp.localhost` if no domain is set).
 
 ### Secret Manager needs retry logic in startup.sh
 The `get_secret()` function retries 5 times with 10s backoff. On first boot, the API may not be ready. If secrets fail, MariaDB gets initialized with fallback passwords and requires a full data wipe to fix.
@@ -73,10 +75,17 @@ gcloud compute ssh erpnext-vm --zone=us-central1-a --tunnel-through-iap -- sudo 
 gcloud compute ssh erpnext-vm --zone=us-central1-a --tunnel-through-iap -- sudo bash /opt/erpnext/scripts/backup.sh
 ```
 
+## Domain Migration
+
+To migrate a live instance to a new domain, run on the VM:
+```bash
+sudo bash /opt/erpnext/scripts/setup-domain.sh erp.vsjailabs.in vsjailabs@gmail.com
+```
+This renames the site, updates .env, reconfigures Nginx, and provisions SSL.
+
 ## Future Work (not yet implemented)
 
-- HTTPS Load Balancer with managed SSL (needs domain)
-- `bench rename-site` when custom domain is added
+- HTTPS Load Balancer with managed SSL (for HA/multi-zone)
 - Cloud SQL MySQL 8.0 (optional, has MariaDB compatibility caveats)
 - Cloud Armor WAF
 - Multi-zone instance group

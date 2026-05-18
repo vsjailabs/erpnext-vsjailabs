@@ -19,9 +19,9 @@ resource "google_monitoring_uptime_check_config" "erpnext" {
   period       = "300s"
 
   http_check {
-    path         = "/api/method/ping"
-    port         = 80
-    use_ssl      = false
+    path           = "/api/method/ping"
+    port           = var.domain != "" ? 443 : 80
+    use_ssl        = var.domain != ""
     request_method = "GET"
   }
 
@@ -29,7 +29,7 @@ resource "google_monitoring_uptime_check_config" "erpnext" {
     type = "uptime_url"
     labels = {
       project_id = var.project_id
-      host       = google_compute_address.erpnext_ip.address
+      host       = var.domain != "" ? var.domain : google_compute_address.erpnext_ip.address
     }
   }
 

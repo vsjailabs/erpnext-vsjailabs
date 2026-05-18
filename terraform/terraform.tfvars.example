@@ -11,9 +11,10 @@ erpnext_version   = "version-15"
 # Network
 subnet_cidr = "10.0.0.0/24"
 
-# Optional: set a real domain for SSL (leave empty for IP-only access)
-domain      = ""
-admin_email = "your-email@example.com"
+# Domain + SSL (set domain for HTTPS via Let's Encrypt; leave empty for IP-only)
+# After deploying with a domain, run scripts/setup-domain.sh on the VM.
+domain      = "erp.vsjailabs.in"
+admin_email = "vsjailabs@gmail.com"
 
 # Backups
 backup_retention_days = 30

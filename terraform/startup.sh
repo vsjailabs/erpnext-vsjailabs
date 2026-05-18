@@ -115,7 +115,14 @@ BACKUP_BUCKET=$(get_meta backup_bucket)
 : "${ADMIN_PASS:=ChangeMe_AdminPass123}"
 : "${ERPNEXT_VER:=version-15}"
 
-echo "[$(date)] Secrets loaded successfully."
+# Site name: use domain if set, otherwise default to erp.localhost
+if [ -n "${DOMAIN_NAME}" ]; then
+  SITE_NAME="${DOMAIN_NAME}"
+else
+  SITE_NAME="erp.localhost"
+fi
+
+echo "[$(date)] Secrets loaded successfully. Site name: ${SITE_NAME}"
 
 # ── Symlink data volumes to persistent disk ──────────────────────────────────
 
@@ -133,7 +140,7 @@ ERPNEXT_VERSION=${ERPNEXT_VER}
 FRAPPE_VERSION=${ERPNEXT_VER}
 DB_PASSWORD=${DB_PASS}
 DB_ROOT_PASSWORD=${DB_ROOT_PASS}
-SITES=\`erp.localhost\`
+SITES=\`${SITE_NAME}\`
 INSTALL_APPS=erpnext
 EOF
 
@@ -164,7 +171,7 @@ docker compose -f compose.yaml \
                -f overrides/compose.noproxy.yaml \
                --env-file .env \
                exec -T backend \
-               bench new-site erp.localhost \
+               bench new-site "${SITE_NAME}" \
                --no-mariadb-socket \
                --db-root-password "${DB_ROOT_PASS}" \
                --db-type mariadb \
@@ -202,7 +209,7 @@ server {
     location / {
         proxy_pass          http://erpnext_backend;
         proxy_http_version  1.1;
-        proxy_set_header    Host              erp.localhost;
+        proxy_set_header    Host              ${SITE_NAME};
         proxy_set_header    X-Real-IP         \$remote_addr;
         proxy_set_header    X-Forwarded-For   \$proxy_add_x_forwarded_for;
         proxy_set_header    X-Forwarded-Proto \$scheme;
@@ -254,7 +261,7 @@ docker compose -f compose.yaml \
                -f overrides/compose.noproxy.yaml \
                --env-file .env \
                exec -T backend \
-               bench --site erp.localhost backup --with-files
+               bench --site all backup --with-files
 
 echo "[${TIMESTAMP}] Backup created in ${BACKUP_DIR}"
 
