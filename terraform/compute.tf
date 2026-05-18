@@ -30,8 +30,8 @@ resource "google_compute_disk" "erpnext_boot" {
 }
 
 resource "google_compute_disk" "erpnext_data" {
-  name = "erpnext-data-disk"
-  type = "pd-ssd"
+  name = "erpnext-data-disk-balanced"
+  type = "pd-balanced"
   zone = var.zone
   size = var.data_disk_size_gb
 

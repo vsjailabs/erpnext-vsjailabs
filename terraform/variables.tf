@@ -18,7 +18,7 @@ variable "zone" {
 variable "machine_type" {
   description = "Compute Engine machine type"
   type        = string
-  default     = "e2-standard-4"
+  default     = "e2-standard-2"
 }
 
 variable "data_disk_size_gb" {

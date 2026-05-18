@@ -15,26 +15,11 @@ resource "google_compute_subnetwork" "erpnext" {
   private_ip_google_access = true
 }
 
-# ── Cloud NAT (outbound internet for VMs without public IP requirement) ──────
-
-resource "google_compute_router" "erpnext" {
-  name    = "erpnext-router"
-  region  = var.region
-  network = google_compute_network.erpnext.id
-}
-
-resource "google_compute_router_nat" "erpnext" {
-  name                               = "erpnext-nat"
-  router                             = google_compute_router.erpnext.name
-  region                             = var.region
-  nat_ip_allocate_option             = "AUTO_ONLY"
-  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
-
-  log_config {
-    enable = true
-    filter = "ERRORS_ONLY"
-  }
-}
+# ── Cloud NAT — REMOVED ─────────────────────────────────────────────────────
+# Cloud NAT is unnecessary because the VM has a static public IP for outbound.
+# Removing saves ~₹726/month. Re-add if VM moves behind a load balancer
+# without a public IP.
+# ────────────────────────────────────────────────────────────────────────────
 
 # ── Firewall Rules ───────────────────────────────────────────────────────────
 

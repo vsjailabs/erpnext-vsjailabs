@@ -188,7 +188,11 @@ else
   SERVER_NAME="_"
 fi
 
-cat > /etc/nginx/sites-available/erpnext <<NGINX
+# Skip Nginx config if Certbot has already configured it (preserve SSL on reboot)
+if grep -q "managed by Certbot" /etc/nginx/sites-available/erpnext 2>/dev/null; then
+  echo "[$(date)] Nginx already configured by Certbot — skipping overwrite"
+else
+  cat > /etc/nginx/sites-available/erpnext <<NGINX
 upstream erpnext_backend {
     server 127.0.0.1:8080;
     keepalive 32;
@@ -219,14 +223,19 @@ server {
 
     location /assets/ {
         proxy_pass         http://erpnext_backend;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              ${SITE_NAME};
+        proxy_set_header   X-Forwarded-Proto \$scheme;
         proxy_cache_valid  200 1d;
         add_header         Cache-Control "public, max-age=86400";
     }
 }
 NGINX
 
-ln -sf /etc/nginx/sites-available/erpnext /etc/nginx/sites-enabled/erpnext
-rm -f /etc/nginx/sites-enabled/default
+  ln -sf /etc/nginx/sites-available/erpnext /etc/nginx/sites-enabled/erpnext
+  rm -f /etc/nginx/sites-enabled/default
+fi
+
 nginx -t && systemctl restart nginx
 
 # ── Optional: Let's Encrypt SSL (when domain is configured) ─────────────────
