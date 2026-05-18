@@ -117,7 +117,9 @@ server {
     location / {
         proxy_pass          http://erpnext_backend;
         proxy_http_version  1.1;
-        proxy_set_header    Host              ${DOMAIN};
+        # MUST use erp.localhost (internal site name), NOT the public domain.
+        # frappe_docker's frontend Nginx uses \$host to find the site directory.
+        proxy_set_header    Host              ${OLD_SITE};
         proxy_set_header    X-Real-IP         \$remote_addr;
         proxy_set_header    X-Forwarded-For   \$proxy_add_x_forwarded_for;
         proxy_set_header    X-Forwarded-Proto \$scheme;

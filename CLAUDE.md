@@ -42,13 +42,14 @@ Every `docker compose` invocation needs all of these:
 ```
 Without `compose.noproxy.yaml`, port 8080 is not exposed and Nginx gets 502.
 
-### Nginx Host header must match the ERPNext site name
-ERPNext is multi-tenant — it only responds to the configured site name. Use:
-```
-proxy_set_header Host erp.vsjailabs.in;
-```
-NOT `$host` (which would send the IP address and get 404).
-The startup.sh uses `${SITE_NAME}` which resolves to the domain (or `erp.localhost` if no domain is set).
+### Nginx Host header must match the ERPNext site DIRECTORY name
+ERPNext is multi-tenant — frappe_docker's frontend Nginx uses `$host` to find the site directory.
+The outer Nginx `Host` header MUST match the directory name under `/sites/`, not the public domain.
+
+- **Fresh deploy with domain**: site created as `erp.vsjailabs.in` → `Host: erp.vsjailabs.in` (startup.sh handles this)
+- **Migrated from IP-only**: site directory is still `erp.localhost` → `Host: erp.localhost` (even though public domain is different)
+
+Current live state: site directory = `erp.localhost`, public domain = `erp.vsjailabs.in`, Host header = `erp.localhost`.
 
 ### Secret Manager needs retry logic in startup.sh
 The `get_secret()` function retries 5 times with 10s backoff. On first boot, the API may not be ready. If secrets fail, MariaDB gets initialized with fallback passwords and requires a full data wipe to fix.
