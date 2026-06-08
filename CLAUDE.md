@@ -7,7 +7,7 @@ Hardened staging environment with custom VPC, Secret Manager, IAP-only SSH, auto
 
 ## Architecture
 
-- **VM:** `e2-standard-4` on custom VPC (`erpnext-vpc`) with Cloud NAT
+- **VM:** `e2-standard-2` on custom VPC (`erpnext-vpc`) — no Cloud NAT (static IP handles outbound)
 - **App:** frappe_docker (Docker Compose) with MariaDB + Redis in containers
 - **Proxy:** Host-level Nginx reverse proxy (port 80/443 → localhost:8080)
 - **Domain:** `erp.vsjailabs.in` (HTTPS via Let's Encrypt)
@@ -15,6 +15,8 @@ Hardened staging environment with custom VPC, Secret Manager, IAP-only SSH, auto
 - **State:** GCS remote backend (`gs://erpnext-staging-tf-state`)
 - **Backups:** Daily 2 AM cron → GCS bucket (30-day retention)
 - **SSH:** IAP tunnel only — no public port 22
+- **Cost:** ~₹5,863/month (optimized from ₹8,840)
+- **Branding:** VSJ AI Labs — custom logos, Letter Head, favicon
 
 ## Terraform File Layout
 
@@ -83,6 +85,31 @@ To migrate a live instance to a new domain, run on the VM:
 sudo bash /opt/erpnext/scripts/setup-domain.sh erp.vsjailabs.in vsjailabs@gmail.com
 ```
 This renames the site, updates .env, reconfigures Nginx, and provisions SSL.
+
+## Branding
+
+VSJ AI Labs branding is configured across three ERPNext DocTypes:
+- **Website Settings:** app_name, app_logo (square), splash_image, favicon, banner_image (horizontal)
+- **System Settings:** app_name (desk/sidebar title)
+- **Letter Head:** "VSJ AI Labs" (default) — horizontal logo + footer for print/email
+
+Logo files on VM: `/files/vsj-logo-square.png`, `/files/vsj-logo-horizontal.png`
+
+To update branding, use the ERPNext REST API from inside the VM (see memory/reference_vm_access.md).
+Always run `bench clear-cache` after changes.
+
+## Migration to Utho Cloud (Pending Approval)
+
+Migration proposal submitted for CEO/CTO approval — `docs/ERPNext_Cloud_Migration_Proposal_v1.0.docx`.
+
+**Target:** Utho Cloud (India DC — Mumbai/Bangalore/Noida), 4 shared vCPU, 8 GB RAM, 160 GB NVMe SSD.
+**Cost:** ₹3,594/mo + GST (vs ₹5,863/mo on GCP). Annual prepaid: ₹36,659/year.
+**Approach:** Fresh deploy (~2 hours). Docker Compose stack is fully portable.
+**GCP backups:** Disk snapshots `erpnext-boot-backup-20260608` and `erpnext-data-backup-20260608` secured.
+**Local backup:** `backups/erpnext-backup-20260608/` — full bench backup (DB + files) downloaded to local machine for restore on Utho.
+**Billing:** New account `01D637-4E740B-49790B` linked (2 previous accounts closed).
+
+If approved, GCP resources will be decommissioned after 7-day verification on Utho + 30-day snapshot retention.
 
 ## Future Work (not yet implemented)
 

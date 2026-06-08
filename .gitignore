@@ -11,6 +11,9 @@ terraform/*.tfstate.backup
 .env.*
 secrets/
 
+# Backups (contain DB dumps with credentials)
+backups/
+
 # OS
 .DS_Store
 Thumbs.db
