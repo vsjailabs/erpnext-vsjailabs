@@ -48,6 +48,7 @@ docker compose -f compose.yaml \
   (use the `.env` `DB_PASSWORD` value as the root password; this build does NOT accept `--with-files`)
 - **Clear cache after any change:** `... exec -T backend bench --site erp.vsjailabs.in clear-cache`
 - **Branding:** see project memory `feedback_erpnext_branding.md` — REST API (login → CSRF → PUT Website/System Settings). Logo files: `/files/vsj-logo-square.png`, `/files/vsj-logo-horizontal.png`.
+- **Email (Zoho):** Email Account `Zoho Outgoing` (default) — `smtp.zoho.in:465`, `use_ssl_for_outgoing=1` (NOT `use_ssl`, which is incoming), from `admin@vsjailabs.com`. Welcome/queued mail needs scheduler enabled (it is); Frappe is queue-first (`tabEmail Queue` → `frappe.email.queue.flush`). Run frappe code: `echo "import base64;exec(base64.b64decode('<b64>').decode())" | docker compose ... exec -T backend bench --site erp.vsjailabs.in console`.
 
 ## Host Nginx & SSL
 - Config: `/etc/nginx/sites-available/erpnext` → proxies `127.0.0.1:8080` with `Host: erp.vsjailabs.in`.
