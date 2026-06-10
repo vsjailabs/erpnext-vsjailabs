@@ -77,5 +77,5 @@ Separate stack: single all-in-one container `openproject` (`openproject/openproj
 ## OpenProject SMTP (Zoho) — see global skill `erpnext-frappe-docker-migration` for the 465 gotcha
 Configured in OpenProject Settings (DB): `smtp.zoho.in:465`, **`smtp_ssl=true` + `smtp_enable_starttls_auto=false`** (mandatory on 465; gem default STARTTLS → `EOFError`). Auth+From = `admin@vsjailabs.com` (Zoho `553` if From=`noreply@` group). Do NOT set `smtp_openssl_verify_mode`. Test: `... rails runner "UserMailer.test_mail(User.find(4)).deliver_now"`.
 
-## ⚠️ OpenProject TODO
-No backup cron yet — needs daily `pg_dump` (via `docker exec openproject` / `$DATABASE_URL`) + `/opt/openproject/assets` tar.
+## OpenProject backups ✅
+`/opt/openproject/scripts/backup.sh` (cron `/etc/cron.d/openproject-backup`, daily 3 AM, 30-day retention) → `pg_dump "$DATABASE_URL"` gzip + `assets/` tar into `/opt/openproject/backups/`. Log: `/var/log/openproject-backup.log`. Manual run: `bash /opt/openproject/scripts/backup.sh`.
