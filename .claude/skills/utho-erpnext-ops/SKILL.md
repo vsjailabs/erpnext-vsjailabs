@@ -1,11 +1,11 @@
 ---
 name: utho-erpnext-ops
-description: Operate the LIVE VSJ AI Labs ERPNext deployment on Utho Cloud (103.127.29.102, https://erp.vsjailabs.in). Use for SSH access, Docker Compose commands, backups, restore, SSL, branding, and troubleshooting this specific server. Triggers when the user mentions the Utho server, erp.vsjailabs.in, ERPNext ops, backups, or "the live ERPNext".
+description: Operate the LIVE VSJ AI Labs apps on the Utho Cloud server (103.127.29.102) — ERPNext (https://erp.vsjailabs.in) AND OpenProject (https://pm.vsjailabs.in). Use for SSH access, Docker/Compose commands, backups, restore, SSL, branding, SMTP, user management, and troubleshooting this specific server. Triggers when the user mentions the Utho server, erp.vsjailabs.in, pm.vsjailabs.in, OpenProject, ERPNext ops, backups, or "the live apps".
 ---
 
-# Utho ERPNext Operations (VSJ AI Labs)
+# Utho Server Operations (VSJ AI Labs)
 
-Live ERPNext v15 on Utho Cloud. **Always confirm before destructive actions** (down, rm, restore over live data, DNS changes).
+The Utho server hosts **two** live apps side by side: **ERPNext v15** (frappe_docker) and **OpenProject 17** (all-in-one). **Always confirm before destructive actions** (down, rm, restore over live data, DNS changes). For a 10-person team; ~2.8 GB of 8 GB RAM used, 4 GB swap.
 
 ## Server facts
 - **IP:** `103.127.29.102` (Delhi/Noida), Ubuntu 24.04, 4 vCPU / 8 GB / 160 GB
@@ -60,3 +60,22 @@ docker compose -f compose.yaml \
 
 ## GCP decommission (pending, ~after 2026-06-16)
 Old GCP VM still has retained snapshots. Do NOT destroy until 7-day Utho verification passes. See `project_utho_migration.md`.
+
+---
+
+# OpenProject (https://pm.vsjailabs.in) — same server
+
+Separate stack: single all-in-one container `openproject` (`openproject/openproject:17`) with its OWN PostgreSQL/memcached/Apache/Puma. Bound to **127.0.0.1:8081**, fronted by its own Nginx vhost + Let's Encrypt cert. Full details in project memory `project_openproject.md`.
+
+- **Status / users:** `docker ps --filter name=openproject` ; users via `docker exec openproject bash -c 'psql "$DATABASE_URL" -c "SELECT id,login,mail,admin,status FROM users ORDER BY id;"'`
+- **Rails runner pattern:** `docker exec openproject bash -lc 'cd /app && RAILS_ENV=production bundle exec rails runner "<ruby>"'`
+- **Reset password / clear lockout** (status: 1=active 3=locked 4=invited; lockout = brute-force, auto-clears or reset `failed_login_count=0`):
+  `docker exec -e P="<pw>" openproject bash -lc 'cd /app && RAILS_ENV=production bundle exec rails runner "u=User.find(<id>); u.failed_login_count=0; u.activate; u.password=ENV[%q(P)]; u.password_confirmation=ENV[%q(P)]; u.force_password_change=false; u.save!"'`
+- **Nginx/SSL:** `/etc/nginx/sites-available/openproject` → `127.0.0.1:8081`; `certbot --nginx ... -d pm.vsjailabs.in --redirect`.
+- **Data:** volumes `/opt/openproject/{pgdata,assets}`; secret `/opt/openproject/secret_key_base.txt` (BACK UP — losing it = unreadable encrypted data).
+
+## OpenProject SMTP (Zoho) — see global skill `erpnext-frappe-docker-migration` for the 465 gotcha
+Configured in OpenProject Settings (DB): `smtp.zoho.in:465`, **`smtp_ssl=true` + `smtp_enable_starttls_auto=false`** (mandatory on 465; gem default STARTTLS → `EOFError`). Auth+From = `admin@vsjailabs.com` (Zoho `553` if From=`noreply@` group). Do NOT set `smtp_openssl_verify_mode`. Test: `... rails runner "UserMailer.test_mail(User.find(4)).deliver_now"`.
+
+## ⚠️ OpenProject TODO
+No backup cron yet — needs daily `pg_dump` (via `docker exec openproject` / `$DATABASE_URL`) + `/opt/openproject/assets` tar.
