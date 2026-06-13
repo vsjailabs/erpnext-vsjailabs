@@ -48,7 +48,8 @@ docker compose -f compose.yaml \
   (use the `.env` `DB_PASSWORD` value as the root password; this build does NOT accept `--with-files`)
 - **Clear cache after any change:** `... exec -T backend bench --site erp.vsjailabs.in clear-cache`
 - **Branding:** see project memory `feedback_erpnext_branding.md` — REST API (login → CSRF → PUT Website/System Settings). Logo files: `/files/vsj-logo-square.png`, `/files/vsj-logo-horizontal.png`.
-- **Email (Zoho):** Email Account `Zoho Outgoing` (default) — `smtp.zoho.in:465`, `use_ssl_for_outgoing=1` (NOT `use_ssl`, which is incoming), from `admin@vsjailabs.com`. Welcome/queued mail needs scheduler enabled (it is); Frappe is queue-first (`tabEmail Queue` → `frappe.email.queue.flush`). Run frappe code: `echo "import base64;exec(base64.b64decode('<b64>').decode())" | docker compose ... exec -T backend bench --site erp.vsjailabs.in console`.
+- **Email (Zoho):** Email Account `Zoho Outgoing` (default) — `smtp.zoho.in:465`, `use_ssl_for_outgoing=1` (NOT `use_ssl`, which is incoming), from `admin@vsjailabs.com`. Welcome/queued mail needs scheduler enabled (it is); Frappe is queue-first (`tabEmail Queue` → `frappe.email.queue.flush`). Run frappe code: `echo "import base64;exec(base64.b64decode('<b64>').decode(), {})" | docker compose ... exec -T backend bench --site erp.vsjailabs.in console` (pass `{}` to exec — IPython split namespace breaks comprehensions otherwise).
+- **HRMS:** `hrms 15.60.4` installed. Guide: `docs/VSJ_HRMS_Functional_Guide_v1.0.docx`. Employee naming = series `VSJ-EMP-.####` (HR Settings `emp_created_by=Naming Series` + Property Setters on Employee.naming_series `options` AND `default`; clear-cache + browser hard-refresh needed). See global skill `erpnext-frappe-docker-migration` for the reusable naming-series pattern.
 
 ## Host Nginx & SSL
 - Config: `/etc/nginx/sites-available/erpnext` → proxies `127.0.0.1:8080` with `Host: erp.vsjailabs.in`.
@@ -77,6 +78,108 @@ Separate stack: single all-in-one container `openproject` (`openproject/openproj
 
 ## OpenProject SMTP (Zoho) — see global skill `erpnext-frappe-docker-migration` for the 465 gotcha
 Configured in OpenProject Settings (DB): `smtp.zoho.in:465`, **`smtp_ssl=true` + `smtp_enable_starttls_auto=false`** (mandatory on 465; gem default STARTTLS → `EOFError`). Auth+From = `admin@vsjailabs.com` (Zoho `553` if From=`noreply@` group). Do NOT set `smtp_openssl_verify_mode`. Test: `... rails runner "UserMailer.test_mail(User.find(4)).deliver_now"`.
+
+---
+
+# ERPNext Payroll Operations
+
+ERPNext HRMS (`hrms 15.60.4`) is installed. Payroll configured 2026-06-13 with VSJ Standard structure covering 3 employees with CTC (Sangeeta ₹4.8L, Chhavi ₹6L, Reeta ₹4.8L). Payroll runs: HR-PRUN-2026-00001 (Apr 2026), HR-PRUN-2026-00002 (May 2026).
+
+## Authentication for API calls (Frappe v15)
+
+In Frappe v15, the `sid` cookie value IS the CSRF token — there is no separate `get_csrf_token` endpoint.
+
+```bash
+# Login + store cookies
+curl -sc /tmp/erp_cookies.txt "https://erp.vsjailabs.in/api/method/login" \
+  -d "usr=Administrator&pwd=<password>"
+
+# Extract SID (= CSRF token)
+SID=$(grep -oP '(?<=\tsid\t)\S+' /tmp/erp_cookies.txt)
+
+# Use in all POST/PUT
+curl -b /tmp/erp_cookies.txt -X PUT "https://erp.vsjailabs.in/api/resource/..." \
+  -H "X-Frappe-CSRF-Token: $SID" -H "Content-Type: application/json" -d '{...}'
+```
+
+## Correct payroll entry submit flow
+
+**NEVER create salary slips manually before submitting the Payroll Entry.** ERPNext creates them internally during PE submit. Pre-existing slips → "Salary Slip already exists" error.
+
+```
+1. POST /api/resource/Payroll Entry  → create Draft PE with employees list
+2. frappe.client.submit (PE doc)      → ERPNext creates Draft salary slips
+3. frappe.client.submit (each slip)  → mark slips as Submitted
+```
+
+If a PE shows `status: "Failed"` (separate from `docstatus`), reset it via PUT before resubmitting:
+```json
+{"status": "Draft", "salary_slips_created": 0}
+```
+
+## Salary structure setup
+
+Structure "VSJ Standard" (docstatus=1, submitted). Must be submitted before slips work.
+
+| Component | Formula |
+|---|---|
+| Basic | `base * 0.5` |
+| HRA | `base * 0.2` |
+| Special Allowance | `base * 0.3` |
+| PF (deduction) | `base * 0.5 * 0.12` |
+| PT (deduction) | ₹200 fixed |
+
+`base` in assignment = monthly gross = CTC / 12.
+
+## Holiday List (mandatory)
+
+"VSJ AI Labs - 2026" — set on Company AND each Employee. Without it, slip creation throws a 417 validation error.
+
+## Suspended employee workaround
+
+ERPNext blocks slip creation for Suspended employees. For a final-month payslip:
+```bash
+# Temporarily activate
+curl ... -X PUT ".../api/resource/Employee/VSJ-EMP-0006" -d '{"status":"Active"}'
+# ... create/submit the slip ...
+# Restore
+curl ... -X PUT ".../api/resource/Employee/VSJ-EMP-0006" -d '{"status":"Suspended"}'
+```
+
+## Naming series reset via bench console
+
+When payroll entries are deleted and re-run, the counter stays at the last value. To reset (e.g., `HR-PRUN-2026-`):
+
+```bash
+# SSH to Utho server, then:
+BACKEND=$(docker ps --filter name=backend -q | head -1)
+docker exec -w /home/frappe/frappe-bench $BACKEND bash -c \
+  "echo \"frappe.db.sql(\\\"UPDATE tabSeries SET current=0 WHERE name='HR-PRUN-2026-'\\\"); frappe.db.commit()\" \
+  | bench --site erp.vsjailabs.in console"
+```
+
+Output `((0,),)` = success. Next PE created will be `HR-PRUN-2026-00001`.
+
+`frappe.client.rename_doc` does not work on Payroll Entry — this bench console method is the only way.
+
+## Email payslips
+
+```bash
+curl -b /tmp/erp_cookies.txt -X POST \
+  "https://erp.vsjailabs.in/api/method/frappe.core.doctype.communication.email.make" \
+  -H "X-Frappe-CSRF-Token: $SID" -H "Content-Type: application/json" \
+  -d '{
+    "doctype": "Salary Slip",
+    "name": "HR-EMP-SLIP-2026-00001",
+    "recipients": "hr@vsjailabs.com",
+    "sender": "admin@vsjailabs.com",
+    "subject": "Salary Slip - April 2026",
+    "content": "Please find attached your salary slip.",
+    "send_email": 1
+  }'
+```
+
+Zoho SMTP (`smtp.zoho.in:465`) is configured as default outgoing. Emails are queue-first — Frappe scheduler flushes `tabEmail Queue` every ~1 min.
 
 ## OpenProject backups ✅
 `/opt/openproject/scripts/backup.sh` (cron `/etc/cron.d/openproject-backup`, daily 3 AM, 30-day retention) → `pg_dump "$DATABASE_URL"` gzip + `assets/` tar into `/opt/openproject/backups/`. Log: `/var/log/openproject-backup.log`. Manual run: `bash /opt/openproject/scripts/backup.sh`.
