@@ -122,4 +122,6 @@ If approved, GCP resources will be decommissioned after 7-day verification on Ut
 
 - Commit messages: imperative mood, explain WHY not WHAT
 - One logical change per commit
-- Include `Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>` when AI-assisted
+- `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>` is added automatically via global commit template (`~/.gitcommit_template`) — do NOT add it manually in commit messages
+- Git identity: `user.name = VSJ AI Labs`, `user.email = vsjailabs@gmail.com`
+- Remote: `git@github-vsjailabs:vsjailabs/erpnext-vsjailabs.git` (SSH alias in `~/.ssh/config`)
