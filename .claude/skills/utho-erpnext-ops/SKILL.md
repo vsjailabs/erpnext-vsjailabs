@@ -15,13 +15,30 @@ The Utho server hosts **two** live apps side by side: **ERPNext v15** (frappe_do
 - **SSL:** Let's Encrypt, certbot auto-renew (expires 2026-09-07)
 
 ## SSH access
-Key-based auth is enabled (the `tpe-mac` ed25519 key was installed 2026-06-09):
+Key-based auth is set up on the `tpe` Mac (key installed 2026-06-13):
 ```bash
-ssh root@103.127.29.102
+ssh utho          # shorthand alias in ~/.ssh/config → root@103.127.29.102
 ```
-Password fallback is recorded in project memory `project_utho_migration.md` (kept out of this repo). With password: `sshpass -e ssh -o PreferredAuthentications=password ...` after `export SSHPASS=...`.
+`~/.ssh/config` on tpe-Mac:
+```
+Host utho
+    HostName 103.127.29.102
+    User root
+    IdentityFile ~/.ssh/id_github_vsjailabs
+    IdentitiesOnly yes
+```
+Password fallback (credentials in project memory `project_utho_migration.md`):
+```bash
+export SSHPASS='<password>'; sshpass -e ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@103.127.29.102
+```
+pexpect fallback (when sshpass unavailable — Claude sandbox):
+```python
+import pexpect
+child = pexpect.spawn('ssh', ['-o','PreferredAuthentications=password','-o','PubkeyAuthentication=no','-o','StrictHostKeyChecking=no','root@103.127.29.102'], timeout=30, encoding='utf-8')
+child.expect('password:'); child.sendline('<password>'); child.expect(r'#', timeout=15)
+```
 
-**If the IP is unreachable on TCP** (office network / sandbox content-filter blocks it — traceroute works but TCP gives ENETUNREACH): use the **Utho VNC web console** (Manage Cloud → Console) over HTTPS in a browser, which always works.
+**If the IP is unreachable on TCP** (sandbox content-filter): use the **Utho VNC web console** (Manage Cloud → Console) over HTTPS in a browser.
 
 ## Credentials (/opt/erpnext/frappe_docker/.env on the server — NOT in this repo)
 - The value of `DB_PASSWORD` in `.env` is **also the MariaDB ROOT password** — frappe_docker sets `MYSQL_ROOT_PASSWORD` from `DB_PASSWORD`, not `DB_ROOT_PASSWORD`. Read it live: `... exec -T db printenv | grep MYSQL_ROOT_PASSWORD`.
