@@ -66,7 +66,50 @@ docker compose -f compose.yaml \
 - **Clear cache after any change:** `... exec -T backend bench --site erp.vsjailabs.in clear-cache`
 - **Branding:** see project memory `feedback_erpnext_branding.md` — REST API (login → CSRF → PUT Website/System Settings). Logo files: `/files/vsj-logo-square.png`, `/files/vsj-logo-horizontal.png`.
 - **Email (Zoho):** Email Account `Zoho Outgoing` (default) — `smtp.zoho.in:465`, `use_ssl_for_outgoing=1` (NOT `use_ssl`, which is incoming), from `admin@vsjailabs.com`. Welcome/queued mail needs scheduler enabled (it is); Frappe is queue-first (`tabEmail Queue` → `frappe.email.queue.flush`). Run frappe code: `echo "import base64;exec(base64.b64decode('<b64>').decode(), {})" | docker compose ... exec -T backend bench --site erp.vsjailabs.in console` (pass `{}` to exec — IPython split namespace breaks comprehensions otherwise).
-- **HRMS:** `hrms 15.60.4` installed. Guide: `docs/VSJ_HRMS_Functional_Guide_v1.0.docx`. Employee naming = series `VSJ-EMP-.####` (HR Settings `emp_created_by=Naming Series` + Property Setters on Employee.naming_series `options` AND `default`; clear-cache + browser hard-refresh needed). See global skill `erpnext-frappe-docker-migration` for the reusable naming-series pattern.
+- **HRMS:** `hrms 15.61.0` installed. Guide: `docs/VSJ_HRMS_Functional_Guide_v1.0.docx`. Employee naming = series `VSJ-EMP-.####` (HR Settings `emp_created_by=Naming Series` + Property Setters on Employee.naming_series `options` AND `default`; clear-cache + browser hard-refresh needed). See global skill `erpnext-frappe-docker-migration` for the reusable naming-series pattern.
+
+## Updating ERPNext / HRMS
+
+**⚠️ CUSTOM IMAGE REQUIRED** — HRMS is NOT in the official `frappe/erpnext:version-15` image. A local image `erpnext-hrms:version-15` is used (built 2026-06-14). `.env` has `CUSTOM_IMAGE=erpnext-hrms` + `CUSTOM_TAG=version-15`.
+
+### Update procedure (whenever ERPNext/HRMS updates are available)
+
+```bash
+ssh utho
+cd /opt/erpnext/frappe_docker
+
+# 1. Backup first
+docker compose -f compose.yaml -f overrides/compose.mariadb.yaml -f overrides/compose.redis.yaml -f overrides/compose.noproxy.yaml --env-file .env \
+  exec -T backend bench --site erp.vsjailabs.in backup --with-files
+
+# 2. Pull the latest base image
+docker pull frappe/erpnext:version-15
+
+# 3. Rebuild custom image with updated HRMS
+docker build -t erpnext-hrms:version-15 /opt/erpnext/
+
+# 4. Recreate containers from local image (--pull never prevents Docker Hub lookup)
+docker compose -f compose.yaml -f overrides/compose.mariadb.yaml -f overrides/compose.redis.yaml -f overrides/compose.noproxy.yaml --env-file .env \
+  up -d --force-recreate --pull never
+
+# 5. Run migrations
+docker compose -f compose.yaml -f overrides/compose.mariadb.yaml -f overrides/compose.redis.yaml -f overrides/compose.noproxy.yaml --env-file .env \
+  exec -T backend bench --site erp.vsjailabs.in migrate
+
+# 6. Verify
+docker compose ... exec -T backend bench version
+curl -s https://erp.vsjailabs.in/api/method/ping
+```
+
+**Dockerfile** at `/opt/erpnext/Dockerfile`:
+```dockerfile
+FROM frappe/erpnext:version-15
+RUN bench get-app --branch version-15 --skip-assets hrms
+```
+
+**DO NOT use** `docker compose pull` alone — it will pull the base image without HRMS and break the site. Always rebuild the custom image first.
+
+**DO NOT use** `bench update` — it fails in frappe_docker (apps are not git clones, no branch to detect).
 
 ## Host Nginx & SSL
 - Config: `/etc/nginx/sites-available/erpnext` → proxies `127.0.0.1:8080` with `Host: erp.vsjailabs.in`.
