@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/tpe/VSJWORK/erpnext-vsjailabs log --oneline -10)"
+    ]
+  }
+}

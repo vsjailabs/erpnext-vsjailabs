@@ -131,6 +131,16 @@ Separate stack: single all-in-one container `openproject` (`openproject/openproj
 
 - **Status / users:** `docker ps --filter name=openproject` ; users via `docker exec openproject bash -c 'psql "$DATABASE_URL" -c "SELECT id,login,mail,admin,status FROM users ORDER BY id;"'`
 - **Rails runner pattern:** `docker exec openproject bash -lc 'cd /app && RAILS_ENV=production bundle exec rails runner "<ruby>"'`
+- **Create new user + send welcome email** (standard flow for new employees):
+  ```bash
+  # 1. Create user
+  docker exec openproject bash -lc 'cd /app && RAILS_ENV=production bundle exec rails runner "u=User.new; u.login=\"firstname.lastname\"; u.firstname=\"First\"; u.lastname=\"Last\"; u.mail=\"first.last@vsjailabs.com\"; u.password=\"Vsj@2026#User!\"; u.password_confirmation=\"Vsj@2026#User!\"; u.force_password_change=true; u.admin=false; u.activate; u.save!; puts u.id"'
+  # 2. Send welcome email
+  docker exec openproject bash -lc 'cd /app && RAILS_ENV=production bundle exec rails runner "UserMailer.account_activated(User.find(<id>)).deliver_now"'
+  ```
+  Default temp password for all VSJ members: `Vsj@2026#User!`. Login pattern: `firstname.lastname`.
+  `User::STATUSES` constant does **not exist** in OP17 — use `u.activate` method instead of setting status directly.
+
 - **Reset password / clear lockout** (status: 1=active 3=locked 4=invited; lockout = brute-force, auto-clears or reset `failed_login_count=0`):
   `docker exec -e P="<pw>" openproject bash -lc 'cd /app && RAILS_ENV=production bundle exec rails runner "u=User.find(<id>); u.failed_login_count=0; u.activate; u.password=ENV[%q(P)]; u.password_confirmation=ENV[%q(P)]; u.force_password_change=false; u.save!"'`
 - **Nginx/SSL:** `/etc/nginx/sites-available/openproject` → `127.0.0.1:8081`; `certbot --nginx ... -d pm.vsjailabs.in --redirect`.
@@ -240,6 +250,88 @@ curl -b /tmp/erp_cookies.txt -X POST \
 ```
 
 Zoho SMTP (`smtp.zoho.in:465`) is configured as default outgoing. Emails are queue-first — Frappe scheduler flushes `tabEmail Queue` every ~1 min.
+
+## ERPNext User Account Management
+
+### Create users, set passwords, link to employees, send credential emails
+
+Write the script to a local file, scp to Utho, docker cp into container, run via bench console, read output file.
+
+```python
+# create_erp_users.py — run via: exec(open('/home/frappe/frappe-bench/create_erp_users.py').read())
+from frappe.utils.password import update_password
+
+employees = [
+    {"id":"VSJ-EMP-0001","email":"admin@vsjailabs.com","first":"Satyam","last":"VSJ","name":"Satyam"},
+    # ... add all employees
+]
+
+for e in employees:
+    existing = frappe.db.get_value("User", {"email": e["email"]}, "name")
+    if not existing:
+        user = frappe.new_doc("User")
+        user.email = e["email"]
+        user.first_name = e["first"]
+        user.last_name = e["last"]
+        user.send_welcome_email = 0   # suppress default reset-pw email
+        user.new_password = TEMP_PASS
+        user.insert(ignore_permissions=True)
+        frappe.db.commit()
+
+    # Always reset temp password (works for existing users too)
+    update_password(e["email"], TEMP_PASS)
+    frappe.db.commit()
+
+    # Link user to employee — enables payslip/leave portal access
+    frappe.db.set_value("Employee", e["id"], "user_id", e["email"])
+    frappe.db.commit()
+
+    frappe.sendmail(recipients=[e["email"]], sender="admin@vsjailabs.com",
+        subject="Your ERPNext Account Credentials - VSJ AI Labs",
+        message=body_html, now=True)
+    frappe.db.commit()
+```
+
+Key points:
+- `send_welcome_email = 0` suppresses Frappe's default reset-password email (we send a custom one)
+- `update_password()` from `frappe.utils.password` is the only reliable way to set password post-insert
+- `employee.user_id = email` is the link that scopes HR data (payslips, leaves) to the logged-in user
+- `frappe.sendmail(now=True)` bypasses the email queue and sends immediately via SMTP
+
+VSJ temp password convention: `Vsj@2026#ERP!` (ERPNext), `Vsj@2026#User!` (OpenProject)
+
+## Recruitment Module Operations (set up 2026-06-14)
+
+### Bench console pattern for recruitment setup
+Always use `cat script.py | bench --site erp.vsjailabs.in console` for multi-step scripts. Heredoc piping mangles special chars.
+
+### Interview Round — mandatory child table
+`expected_skill_set` is a **required child table** on Interview Round. Always append at least one skill before insert:
+```python
+doc = frappe.new_doc("Interview Round")
+doc.round_name = "Technical Round"
+doc.interview_type = "Technical"  # must be an existing "Interview Type" doc
+doc.append("expected_skill_set", {"skill": "Python", "required_skills": "Python"})
+doc.insert(ignore_permissions=True)
+```
+
+### Employee creation mandatory fields
+`date_of_birth` is mandatory (raises `MandatoryError` without it). Always include:
+```python
+emp.date_of_birth = "1990-01-01"   # required
+emp.date_of_joining = "2026-06-16"
+emp.company_email = "name.surname@vsjailabs.com"  # pattern
+```
+
+### Salary Structure Assignment from_date constraint
+`from_date` on SSA **cannot be before the employee's `date_of_joining`**. Always set `ssa.from_date = emp.date_of_joining`.
+
+### Employee naming gap
+VSJ-EMP-0012 slot was consumed by a failed partial insert (missing date_of_birth, insert rolled back but counter incremented). Next employee is VSJ-EMP-0013. This is normal Frappe behavior — naming series never reuses consumed slots.
+
+### CTC → base calculation
+VSJ Standard structure: gross = base × 1.0 (0.5 + 0.2 + 0.3). So `base = CTC_annual / 12`.
+Example: CTC ₹1,40,000 → base = round(140000/12) = ₹11,667/month.
 
 ## OpenProject backups ✅
 `/opt/openproject/scripts/backup.sh` (cron `/etc/cron.d/openproject-backup`, daily 3 AM, 30-day retention) → `pg_dump "$DATABASE_URL"` gzip + `assets/` tar into `/opt/openproject/backups/`. Log: `/var/log/openproject-backup.log`. Manual run: `bash /opt/openproject/scripts/backup.sh`.
