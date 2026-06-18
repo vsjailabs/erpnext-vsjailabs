@@ -1,0 +1,10 @@
+Incident Alert - VSJ AI Labs
+{{range .Alerts}}
+Alert:    {{.Labels.alertname}}
+Status:   {{.Status}}
+{{if .Labels.instance}}Instance: {{.Labels.instance}}
+{{end}}{{if .Annotations.summary}}Summary:  {{.Annotations.summary}}
+{{end}}{{if .Annotations.description}}Details:  {{.Annotations.description}}
+{{end}}Time:     {{.StartsAt}}
+{{end}}
+Dashboard: https://incidents.vsjailabs.in

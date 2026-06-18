@@ -1,0 +1,12 @@
+services:
+  versus:
+    image: ghcr.io/versuscontrol/versus-incident:latest
+    container_name: versus-incident
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./config:/app/config
+      - ./data:/app/data
+    env_file:
+      - .env

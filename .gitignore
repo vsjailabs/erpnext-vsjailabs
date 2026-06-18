@@ -9,7 +9,11 @@ terraform/*.tfstate.backup
 # Secrets
 *.env
 .env.*
+!*.env.example
 secrets/
+
+# Versus Incident runtime data
+versus-incident/data/
 
 # Backups (contain DB dumps with credentials)
 backups/
