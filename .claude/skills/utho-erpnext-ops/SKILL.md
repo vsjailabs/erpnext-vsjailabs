@@ -1,196 +1,173 @@
 ---
 name: utho-erpnext-ops
-description: Operate the LIVE VSJ AI Labs apps on the Utho Cloud server (103.127.29.102) — ERPNext (https://erp.vsjailabs.in) AND OpenProject (https://pm.vsjailabs.in). Use for SSH access, Docker/Compose commands, backups, restore, SSL, branding, SMTP, user management, and troubleshooting this specific server. Triggers when the user mentions the Utho server, erp.vsjailabs.in, pm.vsjailabs.in, OpenProject, ERPNext ops, backups, or "the live apps".
+description: Operate the LIVE VSJ AI Labs apps on the Hostinger VPS (93.127.194.189) — ERPNext v15 LTS (https://erp.vsjailabs.in) AND OpenProject (https://pm.vsjailabs.in). Use for SSH access, Docker/Compose commands, backups, restore, SSL, branding, SMTP, user management, and troubleshooting this specific server. Triggers when the user mentions the server, erp.vsjailabs.in, pm.vsjailabs.in, OpenProject, ERPNext ops, backups, or "the live apps".
 ---
 
-# Utho Server Operations (VSJ AI Labs)
+# Hostinger Server Operations (VSJ AI Labs)
 
-The Utho server hosts **two** live apps side by side: **ERPNext v15** (frappe_docker) and **OpenProject 17** (all-in-one). **Always confirm before destructive actions** (down, rm, restore over live data, DNS changes). For a 10-person team; ~2.8 GB of 8 GB RAM used, 4 GB swap.
+The Hostinger VPS hosts **three** live apps: **ERPNext v15 LTS** (frappe_docker), **OpenProject v15** (all-in-one), and **Portfolio** (static HTML). **Always confirm before destructive actions** (down, rm, restore over live data, DNS changes).
 
 ## Server facts
-- **IP:** `103.127.29.102` (Delhi/Noida), Ubuntu 24.04, 4 vCPU / 8 GB / 160 GB
-- **URL:** https://erp.vsjailabs.in · **Admin:** `Administrator` (password in project memory `project_utho_migration.md`, NOT in this repo)
+- **IP:** `93.127.194.189` (Hostinger), Ubuntu 24.04, 2 vCPU / 8 GB / 96 GB
+- **URL:** https://erp.vsjailabs.in · **Admin:** `Administrator` / `TempAdmin2026`
 - **Site directory name:** `erp.vsjailabs.in` (Nginx `Host` header must match this)
 - **Deploy dir:** `/opt/erpnext/frappe_docker/` · **Data:** persistent in compose volumes
-- **SSL:** Let's Encrypt, certbot auto-renew (expires 2026-09-07)
+- **SSL:** Let's Encrypt, certbot auto-renew
+- **Versions (2026-07-01):** Frappe 15.112.1, ERPNext 15.113.0, HRMS 15.62.0 (fresh v15 LTS install 2026-06-24)
+- **DB password:** `VsjErp#Db#2026#Fresh`
+- **State:** Fresh install — no employees, payroll, or HRMS data. Setup wizard pending.
 
 ## SSH access
-Key-based auth is set up on the `tpe` Mac (key installed 2026-06-13):
+Key-based only (password auth disabled):
 ```bash
-ssh utho          # shorthand alias in ~/.ssh/config → root@103.127.29.102
-```
-`~/.ssh/config` on tpe-Mac:
-```
-Host utho
-    HostName 103.127.29.102
-    User root
-    IdentityFile ~/.ssh/id_github_vsjailabs
-    IdentitiesOnly yes
-```
-Password fallback (credentials in project memory `project_utho_migration.md`):
-```bash
-export SSHPASS='<password>'; sshpass -e ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@103.127.29.102
-```
-pexpect fallback (when sshpass unavailable — Claude sandbox):
-```python
-import pexpect
-child = pexpect.spawn('ssh', ['-o','PreferredAuthentications=password','-o','PubkeyAuthentication=no','-o','StrictHostKeyChecking=no','root@103.127.29.102'], timeout=30, encoding='utf-8')
-child.expect('password:'); child.sendline('<password>'); child.expect(r'#', timeout=15)
+ssh -i ~/.ssh/id_github_vsjailabs root@93.127.194.189
 ```
 
-**If the IP is unreachable on TCP** (sandbox content-filter): use the **Utho VNC web console** (Manage Cloud → Console) over HTTPS in a browser.
-
-## Credentials (/opt/erpnext/frappe_docker/.env on the server — NOT in this repo)
-- The value of `DB_PASSWORD` in `.env` is **also the MariaDB ROOT password** — frappe_docker sets `MYSQL_ROOT_PASSWORD` from `DB_PASSWORD`, not `DB_ROOT_PASSWORD`. Read it live: `... exec -T db printenv | grep MYSQL_ROOT_PASSWORD`.
-- Full credential values live in project memory `project_utho_migration.md`.
-
-## Docker Compose — ALWAYS all 4 files
+## Docker Compose — ALWAYS all 5 files + `--pull never`
 ```bash
 cd /opt/erpnext/frappe_docker
 docker compose -f compose.yaml \
   -f overrides/compose.mariadb.yaml \
   -f overrides/compose.redis.yaml \
   -f overrides/compose.noproxy.yaml \
+  -f overrides/compose.hrms.yaml \
   --env-file .env <command>
 ```
-`compose.noproxy.yaml` exposes the frontend on `0.0.0.0:8080`; without it host Nginx gets 502.
+
+⚠️ **CRITICAL:** Always use `--pull never` with `up -d` — the `erpnext-hrms:version-15` image is LOCAL only (committed from backend container with HRMS installed). Docker Hub pull will fail.
+
+⚠️ `compose.noproxy.yaml` exposes frontend on `0.0.0.0:8080`; without it host Nginx gets 502.
+
+⚠️ `compose.hrms.yaml` overrides ALL 6 service images (backend, frontend, queue-short, queue-long, scheduler, websocket) to use `erpnext-hrms:version-15`.
 
 ## Common tasks
 - **Health:** `curl -s https://erp.vsjailabs.in/api/method/ping` → `{"message":"pong"}`
-- **Container status:** `docker ps --format '{{.Names}}: {{.Status}}'` (expect 9 `Up`)
+- **Container status:** `docker ps --format '{{.Names}}: {{.Status}}'` (expect 10: 9 ERPNext + 1 OpenProject)
 - **Bench command:** `... exec -T backend bench --site erp.vsjailabs.in <cmd>`
 - **Manual backup:** `... exec -T backend bench --site all backup --with-files`
-- **Restore (NOTE the flags on this build):**
+- **Restore (NOTE flags):**
   `... exec -T backend bench --site erp.vsjailabs.in restore <db.sql.gz> --db-root-password "$DB_PASSWORD" --with-public-files <files.tar> --with-private-files <private.tar>`
-  (use the `.env` `DB_PASSWORD` value as the root password; this build does NOT accept `--with-files`)
-- **Clear cache after any change:** `... exec -T backend bench --site erp.vsjailabs.in clear-cache`
-- **Branding:** see project memory `feedback_erpnext_branding.md` — REST API (login → CSRF → PUT Website/System Settings). Logo files: `/files/vsj-logo-square.png`, `/files/vsj-logo-horizontal.png`.
-- **Email (Zoho):** Email Account `Zoho Outgoing` (default) — `smtp.zoho.in:465`, `use_ssl_for_outgoing=1` (NOT `use_ssl`, which is incoming), from `admin@vsjailabs.com`. Welcome/queued mail needs scheduler enabled (it is); Frappe is queue-first (`tabEmail Queue` → `frappe.email.queue.flush`). Run frappe code: `echo "import base64;exec(base64.b64decode('<b64>').decode(), {})" | docker compose ... exec -T backend bench --site erp.vsjailabs.in console` (pass `{}` to exec — IPython split namespace breaks comprehensions otherwise).
-- **HRMS:** `hrms 15.61.0` installed. Guide: `docs/VSJ_HRMS_Functional_Guide_v1.0.docx`. Employee naming = series `VSJ-EMP-.####` (HR Settings `emp_created_by=Naming Series` + Property Setters on Employee.naming_series `options` AND `default`; clear-cache + browser hard-refresh needed). See global skill `erpnext-frappe-docker-migration` for the reusable naming-series pattern.
+  (use `.env` `DB_PASSWORD` as root password; this build does NOT accept `--with-files`)
+- **Clear cache:** `... exec -T backend bench --site erp.vsjailabs.in clear-cache`
+- **Email (Zoho):** Email Domain `vsjailabs.com` + Email Account `Zoho Outgoing` (default sending) — `smtp.zoho.in:465` SSL, `imap.zoho.in:993` SSL, from `admin@vsjailabs.com`. Reconfigured 2026-06-21 (lost during v16 migration).
+- **HRMS:** `hrms 16.10.0` installed. Modules: HR + Payroll. Employee naming = series `VSJAL-EMP-.####` (company abbreviation prefix). Leaders (CEO/CTO/COO/CFO) = 0001–0004. 11 employees (10 active + 1 left).
+- **Departments:** Management, Operations, Accounts, R&D, Quality Management (all suffixed `- VSJAL`).
+- **Branches:** Head Office - Bihar (all current employees), Branch Office - Gurugram (for future hires).
+- **Users:** 10 employee user accounts. Temp password: `Vsj@2026#ERP!`. Super admins: `admin@vsjailabs.com` (Satyam/CTO), `sarita.balwant@vsjailabs.com` (Sarita/CFO) — System Manager + Administrator roles.
+- **Salary Structures:** "VSJ Standard" (submitted) for full-time staff, base ₹14,326 (Bihar Skilled Min Wage). "VSJ Contract Hourly" (submitted) for contract, ₹200/hr max 100 hrs = ₹20,000/mo.
+- **Holiday List:** `VSJ AI Labs - FY 2026-27` (Apr 2026 – Mar 2027) — 65 days: 16 gazetted + 49 Sundays. Set as company default + all employees.
+- **Holiday List Assignments (HRMS v16 mandatory):** 11 assignments (HR-HLA-2026-00001 to 00011) — 1 company + 10 employees, all submitted. ⚠️ HRMS v16 ignores `holiday_list` field on Employee/Company — only `Holiday List Assignment` doctype is checked.
+- **Leave Policies:** Full-Time (`HR-LPOL-2026-00001`: CL 12 + SL 8 + PL 12), Contract (`HR-LPOL-2026-00002`: CL 12 + SL 6). All 10 employees have submitted assignments with pro-rated allocations.
+- **Leave Types:** CL (no carry-fwd, max 2 consecutive), SL (no carry-fwd), PL/EL (carry-fwd max 30, earned monthly, encashable), Maternity (182 days), LWP, Compensatory Off.
+- **Salary Component GL Accounts:** All 9 components mapped. Earnings → `Salary - VSJAL`, Deductions → `TDS on Salary Payable - VSJAL`.
+- **Payroll Payable Account:** `Payroll Payable - VSJAL` (account_type = "Payable"). Must be set before first payroll run.
+- **June 2026 Payroll:** HR-PRUN-2026-00002 (Submitted). 4 salary slips: Chhavi ₹20K (contract), Sohel ₹14,126, Anisha ₹14,126, Juli ₹6,780 (pro-rated). Total net: ₹55,032.48. No PF (startup <20 employees, not EPF registered). Salary structure amended to "VSJ Standard-1" (PF removed).
+- **Sangeeta Balwant (VSJAL-EMP-0011):** Contract consultant, Apr 13 – Jul 18, 2026 (Left). 220 hrs × ₹400/hr = ₹88,000. Retroactive payroll across 4 PEs: Apr ₹16,400 (HR-PRUN-2026-00003), May ₹28,000 (00005), Jun ₹27,200 (00006), Jul ₹16,400 (00007). SSA base updated via MariaDB before each PE. No user account.
+- **DB direct query:** `... exec -T db mariadb -u root -pVsjErp#Db#2026#Utho _c7e31ac4989afd0a -N -e "<SQL>"`
+- **apps.txt gotcha:** After upgrade/rebuild, verify `sites/apps.txt` contains `hrms`. Missing = "Module Payroll not found" errors.
 
 ## Updating ERPNext / HRMS
 
-**⚠️ CUSTOM IMAGE REQUIRED** — HRMS is NOT in the official `frappe/erpnext:version-15` image. A local image `erpnext-hrms:version-15` is used (built 2026-06-14). `.env` has `CUSTOM_IMAGE=erpnext-hrms` + `CUSTOM_TAG=version-15`.
+**⚠️ CUSTOM IMAGE REQUIRED** — HRMS is NOT in the official `frappe/erpnext` image. A locally committed image `erpnext-hrms:version-15` is used.
 
-### Update procedure (whenever ERPNext/HRMS updates are available)
-
+### Update procedure
 ```bash
-ssh utho
+ssh -i ~/.ssh/id_github_vsjailabs root@93.127.194.189
 cd /opt/erpnext/frappe_docker
+COMPOSE="docker compose -f compose.yaml -f overrides/compose.mariadb.yaml -f overrides/compose.redis.yaml -f overrides/compose.noproxy.yaml -f overrides/compose.hrms.yaml --env-file .env"
 
-# 1. Backup first
-docker compose -f compose.yaml -f overrides/compose.mariadb.yaml -f overrides/compose.redis.yaml -f overrides/compose.noproxy.yaml --env-file .env \
-  exec -T backend bench --site erp.vsjailabs.in backup --with-files
+# 1. Backup
+$COMPOSE exec -T backend bench --site erp.vsjailabs.in backup --with-files
 
-# 2. Pull the latest base image
-docker pull frappe/erpnext:version-15
+# 2. Update HRMS in backend
+$COMPOSE exec -T backend bash -c 'cd /home/frappe/frappe-bench && bench get-app hrms --branch version-15 && pip install -e apps/hrms'
 
-# 3. Rebuild custom image with updated HRMS
-docker build -t erpnext-hrms:version-15 /opt/erpnext/
+# 3. Rebuild assets
+$COMPOSE exec -T backend bench build --app hrms
 
-# 4. Recreate containers from local image (--pull never prevents Docker Hub lookup)
-docker compose -f compose.yaml -f overrides/compose.mariadb.yaml -f overrides/compose.redis.yaml -f overrides/compose.noproxy.yaml --env-file .env \
-  up -d --force-recreate --pull never
+# 4. Copy HRMS assets to shared volume (for frontend)
+$COMPOSE exec -T backend bash -c 'rm -rf /home/frappe/frappe-bench/sites/assets/hrms && cp -r /home/frappe/frappe-bench/apps/hrms/hrms/public /home/frappe/frappe-bench/sites/assets/hrms'
 
-# 5. Run migrations
-docker compose -f compose.yaml -f overrides/compose.mariadb.yaml -f overrides/compose.redis.yaml -f overrides/compose.noproxy.yaml --env-file .env \
-  exec -T backend bench --site erp.vsjailabs.in migrate
+# 5. Commit backend as new image
+docker commit frappe_docker-backend-1 erpnext-hrms:version-15
 
-# 6. Verify
-docker compose ... exec -T backend bench version
-curl -s https://erp.vsjailabs.in/api/method/ping
+# 6. Recreate all containers with updated image
+$COMPOSE down
+$COMPOSE up -d --pull never
+
+# 7. Run migrations
+$COMPOSE exec -T backend bench --site erp.vsjailabs.in migrate
+
+# 8. Clear cache
+$COMPOSE exec -T backend bench --site erp.vsjailabs.in clear-cache
 ```
 
-**Dockerfile** at `/opt/erpnext/Dockerfile`:
-```dockerfile
-FROM frappe/erpnext:version-15
-RUN bench get-app --branch version-15 --skip-assets hrms
-```
-
-**DO NOT use** `docker compose pull` alone — it will pull the base image without HRMS and break the site. Always rebuild the custom image first.
-
-**DO NOT use** `bench update` — it fails in frappe_docker (apps are not git clones, no branch to detect).
+**DO NOT use** `docker compose pull` alone — it will pull the base image without HRMS.
+**DO NOT use** `bench update` — it fails in frappe_docker.
 
 ## Host Nginx & SSL
-- Config: `/etc/nginx/sites-available/erpnext` → proxies `127.0.0.1:8080` with `Host: erp.vsjailabs.in`.
+- ERPNext: `/etc/nginx/sites-available/erpnext` → `127.0.0.1:8080` with `Host: erp.vsjailabs.in`
+- OpenProject: `/etc/nginx/sites-available/openproject` → `127.0.0.1:8081`
 - Re-provision SSL: `certbot --nginx --non-interactive --agree-tos --email vsjailabs@gmail.com -d erp.vsjailabs.in --redirect`
 
-## Server-specific gotchas (already fixed, re-check if redeploying)
-- Root partition shipped at 2.5 GB of 160 GB → fixed with `growpart /dev/vda 1 && resize2fs /dev/vda1`.
-- DNS stub was dead → `/etc/resolv.conf` set to 8.8.8.8/1.1.1.1 and `chattr +i` locked. To edit: `chattr -i` first.
-- Containers are `unless-stopped` → auto-start on reboot.
+## Security Controls
+- **SSH:** Key-only (`PermitRootLogin prohibit-password`, `PasswordAuthentication no`)
+- **Firewall:** UFW — 22/80/443 only
+- **fail2ban:** SSH (3 retries → 24hr ban), Nginx jails active
+- **Config:** `/etc/fail2ban/jail.local`, `/etc/ssh/sshd_config`
 
-## GCP decommission (pending, ~after 2026-06-16)
-Old GCP VM still has retained snapshots. Do NOT destroy until 7-day Utho verification passes. See `project_utho_migration.md`.
+## Backup Strategy
+| Service | Schedule | Method | Log |
+|---|---|---|---|
+| ERPNext | 2 AM daily | `bench backup --with-files` | `/var/log/erpnext-backup.log` |
+| OpenProject | 3 AM daily | pg_dump + assets tar (30-day retention) | `/var/log/openproject-backup.log` |
+
+## Monitoring
+```bash
+ssh -i ~/.ssh/id_github_vsjailabs root@93.127.194.189 "echo '--- Docker ---' && docker ps --format 'table {{.Names}}\t{{.Status}}' && \
+  echo '--- Disk ---' && df -h / && echo '--- Memory ---' && free -h && \
+  echo '--- HTTP ---' && curl -s -o /dev/null -w 'ERPNext: %{http_code}\n' https://erp.vsjailabs.in && \
+  curl -s -o /dev/null -w 'OpenProject: %{http_code}\n' https://pm.vsjailabs.in && \
+  echo '--- Security ---' && ufw status | head -3 && \
+  fail2ban-client status sshd | grep 'Currently banned'"
+```
 
 ---
 
 # OpenProject (https://pm.vsjailabs.in) — same server
 
-Separate stack: single all-in-one container `openproject` (`openproject/openproject:17`) with its OWN PostgreSQL/memcached/Apache/Puma. Bound to **127.0.0.1:8081**, fronted by its own Nginx vhost + Let's Encrypt cert. Full details in project memory `project_openproject.md`.
+Single all-in-one container `openproject` (`openproject/openproject:15`) with PostgreSQL/memcached/Apache/Puma. Bound to **127.0.0.1:8081**, Nginx vhost + Let's Encrypt cert.
 
-- **Status / users:** `docker ps --filter name=openproject` ; users via `docker exec openproject bash -c 'psql "$DATABASE_URL" -c "SELECT id,login,mail,admin,status FROM users ORDER BY id;"'`
-- **Rails runner pattern:** `docker exec openproject bash -lc 'cd /app && RAILS_ENV=production bundle exec rails runner "<ruby>"'`
-- **Create new user + send welcome email** (standard flow for new employees):
-  ```bash
-  # 1. Create user
-  docker exec openproject bash -lc 'cd /app && RAILS_ENV=production bundle exec rails runner "u=User.new; u.login=\"firstname.lastname\"; u.firstname=\"First\"; u.lastname=\"Last\"; u.mail=\"first.last@vsjailabs.com\"; u.password=\"Vsj@2026#User!\"; u.password_confirmation=\"Vsj@2026#User!\"; u.force_password_change=true; u.admin=false; u.activate; u.save!; puts u.id"'
-  # 2. Send welcome email
-  docker exec openproject bash -lc 'cd /app && RAILS_ENV=production bundle exec rails runner "UserMailer.account_activated(User.find(<id>)).deliver_now"'
-  ```
-  Default temp password for all VSJ members: `Vsj@2026#User!`. Login pattern: `firstname.lastname`.
-  `User::STATUSES` constant does **not exist** in OP17 — use `u.activate` method instead of setting status directly.
+⚠️ **Enterprise override:** Boards/enterprise features unlocked via monkey-patch initializer at `/app/config/initializers/enterprise_override.rb` INSIDE the container. Lost on recreation — must re-apply.
+⚠️ **Board creation:** NEVER create boards via Rails runner — always use the browser UI. Rails runner boards show duplicate/empty data.
 
-- **Reset password / clear lockout** (status: 1=active 3=locked 4=invited; lockout = brute-force, auto-clears or reset `failed_login_count=0`):
-  `docker exec -e P="<pw>" openproject bash -lc 'cd /app && RAILS_ENV=production bundle exec rails runner "u=User.find(<id>); u.failed_login_count=0; u.activate; u.password=ENV[%q(P)]; u.password_confirmation=ENV[%q(P)]; u.force_password_change=false; u.save!"'`
-- **Nginx/SSL:** `/etc/nginx/sites-available/openproject` → `127.0.0.1:8081`; `certbot --nginx ... -d pm.vsjailabs.in --redirect`.
-- **Data:** volumes `/opt/openproject/{pgdata,assets}`; secret `/opt/openproject/secret_key_base.txt` (BACK UP — losing it = unreadable encrypted data).
-
-## OpenProject SMTP (Zoho) — see global skill `erpnext-frappe-docker-migration` for the 465 gotcha
-Configured in OpenProject Settings (DB): `smtp.zoho.in:465`, **`smtp_ssl=true` + `smtp_enable_starttls_auto=false`** (mandatory on 465; gem default STARTTLS → `EOFError`). Auth+From = `admin@vsjailabs.com` (Zoho `553` if From=`noreply@` group). Do NOT set `smtp_openssl_verify_mode`. Test: `... rails runner "UserMailer.test_mail(User.find(4)).deliver_now"`.
+- **Users:** `docker exec openproject bash -c 'psql "$DATABASE_URL" -c "SELECT id,login,mail,admin,status FROM users ORDER BY id;"'`
+- **Rails runner:** `docker exec openproject bash -lc 'cd /app && RAILS_ENV=production bundle exec rails runner "<ruby>"'`
+- **Create user:** See project memory `project_openproject.md`
+- **SMTP:** `smtp.zoho.in:465`, `smtp_ssl=true`, `smtp_enable_starttls_auto=false`, from `admin@vsjailabs.com`
+- **Data:** volumes `/opt/openproject/{pgdata,assets}`; secret `/opt/openproject/secret_key_base.txt` (BACK UP)
 
 ---
 
 # ERPNext Payroll Operations
 
-ERPNext HRMS (`hrms 15.60.4`) is installed. Payroll configured 2026-06-13 with VSJ Standard structure covering 3 employees with CTC (Sangeeta ₹4.8L, Chhavi ₹6L, Reeta ₹4.8L). Payroll runs: HR-PRUN-2026-00001 (Apr 2026), HR-PRUN-2026-00002 (May 2026).
+HRMS 16.10.0 installed. Payroll module included (HR + Payroll modules in HRMS v16).
 
-## Authentication for API calls (Frappe v15)
-
-In Frappe v15, the `sid` cookie value IS the CSRF token — there is no separate `get_csrf_token` endpoint.
-
+## Authentication for API calls
 ```bash
 # Login + store cookies
 curl -sc /tmp/erp_cookies.txt "https://erp.vsjailabs.in/api/method/login" \
   -d "usr=Administrator&pwd=<password>"
 
-# Extract SID (= CSRF token)
+# Extract SID (= CSRF token in Frappe)
 SID=$(grep -oP '(?<=\tsid\t)\S+' /tmp/erp_cookies.txt)
 
-# Use in all POST/PUT
+# Use in POST/PUT
 curl -b /tmp/erp_cookies.txt -X PUT "https://erp.vsjailabs.in/api/resource/..." \
   -H "X-Frappe-CSRF-Token: $SID" -H "Content-Type: application/json" -d '{...}'
 ```
 
-## Correct payroll entry submit flow
-
-**NEVER create salary slips manually before submitting the Payroll Entry.** ERPNext creates them internally during PE submit. Pre-existing slips → "Salary Slip already exists" error.
-
-```
-1. POST /api/resource/Payroll Entry  → create Draft PE with employees list
-2. frappe.client.submit (PE doc)      → ERPNext creates Draft salary slips
-3. frappe.client.submit (each slip)  → mark slips as Submitted
-```
-
-If a PE shows `status: "Failed"` (separate from `docstatus`), reset it via PUT before resubmitting:
-```json
-{"status": "Draft", "salary_slips_created": 0}
-```
-
-## Salary structure setup
-
-Structure "VSJ Standard" (docstatus=1, submitted). Must be submitted before slips work.
-
+## Salary Structure — "VSJ Standard"
 | Component | Formula |
 |---|---|
 | Basic | `base * 0.5` |
@@ -199,139 +176,30 @@ Structure "VSJ Standard" (docstatus=1, submitted). Must be submitted before slip
 | PF (deduction) | `base * 0.5 * 0.12` |
 | PT (deduction) | ₹200 fixed |
 
-`base` in assignment = monthly gross = CTC / 12.
+`base` = CTC / 12.
 
-## Holiday List (mandatory)
+## Key gotchas
+- **Payroll Entry submit flow:** Never create salary slips manually before submitting PE — ERPNext creates them internally.
+- **Suspended employee:** Temporarily activate → create slip → restore status.
+- **Holiday List Assignment mandatory (v16):** `Holiday List Assignment` doctype must exist (submitted) for each employee AND company. The `holiday_list` field on Employee/Company is IGNORED by HRMS v16.
+- **Naming series reset:** `bench console` → `frappe.db.sql("UPDATE tabSeries SET current=0 WHERE name='HR-PRUN-2026-'")`
+- **apps.txt must include hrms:** After upgrades/rebuilds, `echo hrms >> sites/apps.txt` + clear-cache. Without it, HRMS doctypes throw "Module Payroll not found".
+- **Bench console pipe pattern:** Use `echo "y" | bench --site erp.vsjailabs.in console << PYEND` for programmatic operations. REST API cookies and direct python both fail.
+- **Salary Structure set_name:** Use `ss.insert(ignore_permissions=True, set_name="VSJ Standard")` — autoname is "Prompt".
 
-"VSJ AI Labs - 2026" — set on Company AND each Employee. Without it, slip creation throws a 417 validation error.
-
-## Suspended employee workaround
-
-ERPNext blocks slip creation for Suspended employees. For a final-month payslip:
-```bash
-# Temporarily activate
-curl ... -X PUT ".../api/resource/Employee/VSJ-EMP-0006" -d '{"status":"Active"}'
-# ... create/submit the slip ...
-# Restore
-curl ... -X PUT ".../api/resource/Employee/VSJ-EMP-0006" -d '{"status":"Suspended"}'
-```
-
-## Naming series reset via bench console
-
-When payroll entries are deleted and re-run, the counter stays at the last value. To reset (e.g., `HR-PRUN-2026-`):
-
-```bash
-# SSH to Utho server, then:
-BACKEND=$(docker ps --filter name=backend -q | head -1)
-docker exec -w /home/frappe/frappe-bench $BACKEND bash -c \
-  "echo \"frappe.db.sql(\\\"UPDATE tabSeries SET current=0 WHERE name='HR-PRUN-2026-'\\\"); frappe.db.commit()\" \
-  | bench --site erp.vsjailabs.in console"
-```
-
-Output `((0,),)` = success. Next PE created will be `HR-PRUN-2026-00001`.
-
-`frappe.client.rename_doc` does not work on Payroll Entry — this bench console method is the only way.
-
-## Email payslips
-
-```bash
-curl -b /tmp/erp_cookies.txt -X POST \
-  "https://erp.vsjailabs.in/api/method/frappe.core.doctype.communication.email.make" \
-  -H "X-Frappe-CSRF-Token: $SID" -H "Content-Type: application/json" \
-  -d '{
-    "doctype": "Salary Slip",
-    "name": "HR-EMP-SLIP-2026-00001",
-    "recipients": "hr@vsjailabs.com",
-    "sender": "admin@vsjailabs.com",
-    "subject": "Salary Slip - April 2026",
-    "content": "Please find attached your salary slip.",
-    "send_email": 1
-  }'
-```
-
-Zoho SMTP (`smtp.zoho.in:465`) is configured as default outgoing. Emails are queue-first — Frappe scheduler flushes `tabEmail Queue` every ~1 min.
-
-## ERPNext User Account Management
-
-### Create users, set passwords, link to employees, send credential emails
-
-Write the script to a local file, scp to Utho, docker cp into container, run via bench console, read output file.
-
-```python
-# create_erp_users.py — run via: exec(open('/home/frappe/frappe-bench/create_erp_users.py').read())
-from frappe.utils.password import update_password
-
-employees = [
-    {"id":"VSJ-EMP-0001","email":"admin@vsjailabs.com","first":"Satyam","last":"VSJ","name":"Satyam"},
-    # ... add all employees
-]
-
-for e in employees:
-    existing = frappe.db.get_value("User", {"email": e["email"]}, "name")
-    if not existing:
-        user = frappe.new_doc("User")
-        user.email = e["email"]
-        user.first_name = e["first"]
-        user.last_name = e["last"]
-        user.send_welcome_email = 0   # suppress default reset-pw email
-        user.new_password = TEMP_PASS
-        user.insert(ignore_permissions=True)
-        frappe.db.commit()
-
-    # Always reset temp password (works for existing users too)
-    update_password(e["email"], TEMP_PASS)
-    frappe.db.commit()
-
-    # Link user to employee — enables payslip/leave portal access
-    frappe.db.set_value("Employee", e["id"], "user_id", e["email"])
-    frappe.db.commit()
-
-    frappe.sendmail(recipients=[e["email"]], sender="admin@vsjailabs.com",
-        subject="Your ERPNext Account Credentials - VSJ AI Labs",
-        message=body_html, now=True)
-    frappe.db.commit()
-```
-
-Key points:
-- `send_welcome_email = 0` suppresses Frappe's default reset-password email (we send a custom one)
-- `update_password()` from `frappe.utils.password` is the only reliable way to set password post-insert
-- `employee.user_id = email` is the link that scopes HR data (payslips, leaves) to the logged-in user
-- `frappe.sendmail(now=True)` bypasses the email queue and sends immediately via SMTP
-
-VSJ temp password convention: `Vsj@2026#ERP!` (ERPNext), `Vsj@2026#User!` (OpenProject)
-
-## Recruitment Module Operations (set up 2026-06-14)
-
-### Bench console pattern for recruitment setup
-Always use `cat script.py | bench --site erp.vsjailabs.in console` for multi-step scripts. Heredoc piping mangles special chars.
-
-### Interview Round — mandatory child table
-`expected_skill_set` is a **required child table** on Interview Round. Always append at least one skill before insert:
-```python
-doc = frappe.new_doc("Interview Round")
-doc.round_name = "Technical Round"
-doc.interview_type = "Technical"  # must be an existing "Interview Type" doc
-doc.append("expected_skill_set", {"skill": "Python", "required_skills": "Python"})
-doc.insert(ignore_permissions=True)
-```
-
-### Employee creation mandatory fields
-`date_of_birth` is mandatory (raises `MandatoryError` without it). Always include:
-```python
-emp.date_of_birth = "1990-01-01"   # required
-emp.date_of_joining = "2026-06-16"
-emp.company_email = "name.surname@vsjailabs.com"  # pattern
-```
-
-### Salary Structure Assignment from_date constraint
-`from_date` on SSA **cannot be before the employee's `date_of_joining`**. Always set `ssa.from_date = emp.date_of_joining`.
-
-### Employee naming gap
-VSJ-EMP-0012 slot was consumed by a failed partial insert (missing date_of_birth, insert rolled back but counter incremented). Next employee is VSJ-EMP-0013. This is normal Frappe behavior — naming series never reuses consumed slots.
-
-### CTC → base calculation
-VSJ Standard structure: gross = base × 1.0 (0.5 + 0.2 + 0.3). So `base = CTC_annual / 12`.
-Example: CTC ₹1,40,000 → base = round(140000/12) = ₹11,667/month.
-
-## OpenProject backups ✅
-`/opt/openproject/scripts/backup.sh` (cron `/etc/cron.d/openproject-backup`, daily 3 AM, 30-day retention) → `pg_dump "$DATABASE_URL"` gzip + `assets/` tar into `/opt/openproject/backups/`. Log: `/var/log/openproject-backup.log`. Manual run: `bash /opt/openproject/scripts/backup.sh`.
+## User Account Management
+- **10 employee users created** (2026-06-21). All linked via `user_id` on Employee doctype.
+- Temp password convention: `Vsj@2026#ERP!` (ERPNext), `Vsj@2026#User!` (OpenProject)
+- Super admins: `admin@vsjailabs.com` (Satyam/CTO), `sarita.balwant@vsjailabs.com` (Sarita/CFO) — System Manager + Administrator + Accounts Manager
+- C-suite (CEO/COO): HR Manager + HR User
+- Staff/Contract: Employee Self Service only
+- Link user to employee: `frappe.db.set_value("Employee", eid, "user_id", email)`
+- Password reset: `update_password(email, new_pass)` from `frappe.utils.password`
+- **Password reset emails (REST API — bench console silently fails):**
+  ```bash
+  curl -s -c /tmp/cookie.txt -H 'Host: erp.vsjailabs.in' -X POST 'http://localhost:8080/api/method/login' -d 'usr=Administrator&pwd=TempAdmin2026'
+  curl -s -b /tmp/cookie.txt -H 'Host: erp.vsjailabs.in' -X POST 'http://localhost:8080/api/method/frappe.core.doctype.user.user.reset_password' -d 'user=<email>'
+  ```
+  ⚠️ Must include `-H 'Host: erp.vsjailabs.in'` — localhost without Host header returns 404. All 9 employee password reset emails sent 2026-06-21.
+- **user_id requires existing User:** Setting `user_id` on Employee triggers link validation — create the User first, then set `user_id`. Use `flags.ignore_links = True` on Employee save if needed.
+- **Education level values:** Only "Graduate", "Post Graduate", "Under Graduate" accepted (not "CBSE", "Btech" etc.).

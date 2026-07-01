@@ -1,9 +1,12 @@
-# ERPNext GCP Deployment — Project Instructions
+# ERPNext VSJ AI Labs — Project Instructions
 
 ## Project Overview
 
-ERPNext v15 deployed on GCP Compute Engine via Terraform + Docker Compose (frappe_docker).
-Hardened staging environment with custom VPC, Secret Manager, IAP-only SSH, automated backups, and monitoring.
+ERPNext v15 LTS deployed on Hostinger VPS via Docker Compose (frappe_docker) with custom HRMS image.
+Production environment with hardened SSH, UFW firewall, fail2ban, automated backups, and Let's Encrypt SSL.
+
+**LIVE SERVER:** Hostinger VPS 93.127.194.189 — Frappe 15.112.1, ERPNext 15.113.0, HRMS 15.62.0.
+**GCP LEGACY:** Original GCP deployment decommissioned. Terraform files retained for reference.
 
 ## Architecture
 
@@ -98,18 +101,35 @@ Logo files on VM: `/files/vsj-logo-square.png`, `/files/vsj-logo-horizontal.png`
 To update branding, use the ERPNext REST API from inside the VM (see memory/reference_vm_access.md).
 Always run `bench clear-cache` after changes.
 
-## Migration to Utho Cloud (Pending Approval)
+## Hostinger VPS (LIVE — migrated from Utho 2026-06-20)
 
-Migration proposal submitted for CEO/CTO approval — `docs/ERPNext_Cloud_Migration_Proposal_v1.0.docx`.
+**Server:** 93.127.194.189 (Hostinger, India DC), Ubuntu 24.04, 2 vCPU / 8 GB / 96 GB.
+**Services:** ERPNext (erp.vsjailabs.in) + OpenProject (pm.vsjailabs.in) + Portfolio (portfolio.vsjailabs.in).
+**Versions:** Frappe 15.112.1, ERPNext 15.113.0, HRMS 15.62.0. Fresh install 2026-06-24 (wiped v16 data).
+**Custom image:** `erpnext-hrms:version-15` (local). All 6 services use it via `compose.hrms.yaml`.
+**Admin:** Administrator / TempAdmin2026.
+**Data:** Fresh install — no employees, payroll, or HRMS data. Setup wizard pending.
 
-**Target:** Utho Cloud (India DC — Mumbai/Bangalore/Noida), 4 shared vCPU, 8 GB RAM, 160 GB NVMe SSD.
-**Cost:** ₹3,594/mo + GST (vs ₹5,863/mo on GCP). Annual prepaid: ₹36,659/year.
-**Approach:** Fresh deploy (~2 hours). Docker Compose stack is fully portable.
-**GCP backups:** Disk snapshots `erpnext-boot-backup-20260608` and `erpnext-data-backup-20260608` secured.
-**Local backup:** `backups/erpnext-backup-20260608/` — full bench backup (DB + files) downloaded to local machine for restore on Utho.
-**Billing:** New account `01D637-4E740B-49790B` linked (2 previous accounts closed).
+### Server Security (hardened)
+- **SSH:** Key-only auth (`PermitRootLogin prohibit-password`, `PasswordAuthentication no`). `ssh -i ~/.ssh/id_github_vsjailabs root@93.127.194.189`
+- **Firewall:** UFW active — ports 22, 80, 443 only.
+- **fail2ban:** SSH jail (3 retries → 24hr ban), Nginx jails active. Config: `/etc/fail2ban/jail.local`.
+- **Emergency access:** Hostinger VNC web console.
 
-If approved, GCP resources will be decommissioned after 7-day verification on Utho + 30-day snapshot retention.
+### Docker Compose (5 files + --pull never)
+```bash
+cd /opt/erpnext/frappe_docker
+docker compose -f compose.yaml -f overrides/compose.mariadb.yaml -f overrides/compose.redis.yaml -f overrides/compose.noproxy.yaml -f overrides/compose.hrms.yaml --env-file .env <command>
+```
+Always use `--pull never` with `up -d` — custom image is local only.
+
+### MariaDB Direct Query
+```bash
+... exec -T db mariadb -u root -pVsjErp#Db#2026#Utho _c7e31ac4989afd0a -N -e "<SQL>"
+```
+
+### GCP/Utho Decommission
+Both previous servers decommissioned. GCP snapshots retained: `erpnext-boot-backup-20260608`, `erpnext-data-backup-20260608`.
 
 ## Future Work (not yet implemented)
 

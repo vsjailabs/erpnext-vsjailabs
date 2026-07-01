@@ -8,43 +8,14 @@ Manage production incidents, alert routing, post-incident reviews, and SLA track
 - A service is down or degraded
 - Setting up alerting, escalation, or incident response procedures
 
-## Platform: Versus Incident (incidents.vsjailabs.in)
+## Platform: Manual (no incident tool currently deployed)
 
-### Access
-- **URL:** https://incidents.vsjailabs.in
-- **Server:** 103.127.29.102, container `versus-incident`, port 3000
-- **Config:** `/opt/versus-incident/`
-- **Data:** `/opt/versus-incident/data/`
+Versus Incident was removed 2026-06-18. Until a replacement is deployed, use manual incident tracking via OpenProject work packages and email.
 
-### API Endpoints
-```
-POST /api/incidents          — Create incident
-GET  /api/admin/incidents    — List all incidents (admin auth required)
-GET  /api/ack/:id            — Acknowledge incident
-GET  /api/agent/status       — Agent/service status
-POST /api/admin/teams        — Create/manage teams
-```
-
-### SMTP Configuration
-- **Provider:** Zoho (smtp.zoho.in:465)
-- **From:** admin@vsjailabs.com
-- **Alert to:** admin@vsjailabs.com (configurable in .env)
-- **Subject prefix:** "Incident Alert - VSJ AI Labs"
-
-### Container Management
-```bash
-# View logs
-ssh root@103.127.29.102 "docker logs versus-incident --tail 50"
-
-# Restart
-ssh root@103.127.29.102 "cd /opt/versus-incident && docker compose restart"
-
-# View config
-ssh root@103.127.29.102 "cat /opt/versus-incident/.env"
-
-# View stored data
-ssh root@103.127.29.102 "ls -la /opt/versus-incident/data/"
-```
+### Manual Incident Tracking
+- Create OpenProject work package with type "Bug" or "Task" and priority matching severity
+- Email admin@vsjailabs.com with incident details
+- Use the triage checklist and severity levels below for consistent response
 
 ## Incident Response Procedure
 
@@ -58,20 +29,19 @@ ssh root@103.127.29.102 "ls -la /opt/versus-incident/data/"
 | SEV-4 | Cosmetic/Low | Next business day | 1 week | UI glitch, minor log error |
 
 ### Triage Checklist (first 15 minutes)
-1. **Identify** — Which service? Check all three:
+1. **Identify** — Which service? Check both:
    ```bash
    curl -s -o /dev/null -w '%{http_code}' https://erp.vsjailabs.in
    curl -s -o /dev/null -w '%{http_code}' https://pm.vsjailabs.in
-   curl -s -o /dev/null -w '%{http_code}' https://incidents.vsjailabs.in
    ```
 2. **Assess** — Is it container-level, Nginx, or host?
    ```bash
-   ssh root@103.127.29.102 "docker ps -a --format 'table {{.Names}}\t{{.Status}}'"
-   ssh root@103.127.29.102 "systemctl status nginx"
+   ssh root@93.127.194.189 "docker ps -a --format 'table {{.Names}}\t{{.Status}}'"
+   ssh root@93.127.194.189 "systemctl status nginx"
    ```
 3. **Logs** — Check relevant container logs:
    ```bash
-   ssh root@103.127.29.102 "docker logs <container> --tail 100 --since 30m"
+   ssh root@93.127.194.189 "docker logs <container> --tail 100 --since 30m"
    ```
 4. **Fix or Escalate** — Restart container if obvious, escalate to director if data/security issue
 
@@ -85,6 +55,9 @@ ssh root@103.127.29.102 "ls -la /opt/versus-incident/data/"
 | OpenProject login fails | Container restart needed | `docker restart openproject` |
 | High memory | Swap pressure from too many containers | Identify memory hog with `docker stats` |
 | Slow response | DB query slow or disk I/O | Check `docker stats` + `iostat` |
+| SSH brute-force spike | Botnet targeting server | Check `fail2ban-client status sshd` — bans are automatic |
+| Legitimate IP banned | fail2ban false positive | `fail2ban-client unban <IP>` |
+| Can't SSH in | Own IP banned or key issue | Use Hostinger VNC console as fallback |
 
 ## Post-Incident Review Template
 

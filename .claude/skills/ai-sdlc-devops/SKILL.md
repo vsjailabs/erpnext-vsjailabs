@@ -1,7 +1,7 @@
 # AI SDLC — Phase 4: DevOps, Deployment & Infrastructure
 
 ## Purpose
-Automate deployments, infrastructure management, monitoring, backups, and CI/CD for the VSJ AI Labs Utho server stack.
+Automate deployments, infrastructure management, monitoring, backups, and CI/CD for the VSJ AI Labs Hostinger server stack.
 
 ## When to use
 - User says "deploy", "update server", "check infra", "backup", "SSL", "nginx"
@@ -10,101 +10,120 @@ Automate deployments, infrastructure management, monitoring, backups, and CI/CD 
 
 ## Infrastructure Overview
 
-### Utho Server (103.127.29.102)
-- **OS:** Ubuntu 22.04+
-- **CPU/RAM:** 4 shared vCPU / 8 GB RAM
-- **Disk:** 160 GB NVMe SSD (15% used)
-- **Access:** `ssh root@103.127.29.102` (key-based from tpe-Mac)
+### Hostinger VPS (93.127.194.189)
+- **OS:** Ubuntu 24.04 LTS
+- **CPU/RAM:** 2 vCPU / 8 GB RAM
+- **Disk:** 96 GB (~13% used as of 2026-07-01)
+- **Access:** `ssh -i ~/.ssh/id_github_vsjailabs root@93.127.194.189` (key-only)
+
+### Security Controls
+- **SSH:** Key-only auth (`PermitRootLogin prohibit-password`, `PasswordAuthentication no`, `MaxAuthTries 3`)
+- **Firewall:** UFW active — allow 22/tcp, 80/tcp, 443/tcp only
+- **fail2ban:** Active with 3 jails:
+  - `sshd`: 3 retries → 24hr ban
+  - `nginx-http-auth`: 5 retries → 1hr ban
+  - `nginx-limit-req`: 10 retries → 1hr ban
+- **Config files:** `/etc/fail2ban/jail.local`, `/etc/ssh/sshd_config`
+
+```bash
+# Check firewall
+ssh -i ~/.ssh/id_github_vsjailabs root@93.127.194.189 "ufw status verbose"
+
+# Check fail2ban bans
+ssh -i ~/.ssh/id_github_vsjailabs root@93.127.194.189 "fail2ban-client status sshd"
+
+# Unban an IP
+ssh -i ~/.ssh/id_github_vsjailabs root@93.127.194.189 "fail2ban-client unban <IP>"
+```
 
 ### Services Running
 
 | Service | Container(s) | Port | Domain | Stack |
 |---|---|---|---|---|
-| ERPNext | 8 containers (frappe_docker) | 8080 | erp.vsjailabs.in | Frappe 15.110, ERPNext 15.111, HRMS 15.61 |
-| OpenProject | 1 container (all-in-one) | 8081 | pm.vsjailabs.in | OpenProject 14 |
-| Versus Incident | 1 container | 3000 | incidents.vsjailabs.in | Latest |
-| Nginx | Host-level | 80/443 | All 3 domains | Reverse proxy + Let's Encrypt |
+| ERPNext | 9 containers (frappe_docker) | 8080 | erp.vsjailabs.in | Frappe 15.112.1, ERPNext 15.113.0, HRMS 15.62.0 |
+| OpenProject | 1 container (all-in-one) | 8081 | pm.vsjailabs.in | OpenProject 15 |
+| Portfolio | Host Nginx (static) | — | portfolio.vsjailabs.in | Static HTML |
+| Nginx | Host-level | 80/443 | Both domains | Reverse proxy + Let's Encrypt |
+
+### Docker Image
+Custom local image `erpnext-hrms:version-15` (7.5 GB) — committed from backend container with HRMS installed. Used by ALL 6 app services (backend, frontend, queue-short, queue-long, scheduler, websocket) via `overrides/compose.hrms.yaml`.
 
 ### Nginx Sites
 ```
 /etc/nginx/sites-enabled/erpnext       → 127.0.0.1:8080
-/etc/nginx/sites-enabled/openproject    → 127.0.0.1:8081
-/etc/nginx/sites-enabled/versus-incident → 127.0.0.1:3000
-```
-
-### SSL Certificates (Let's Encrypt / Certbot)
-Auto-renewal via systemd timer. Manual renewal:
-```bash
-ssh root@103.127.29.102 "certbot renew --dry-run"
+/etc/nginx/sites-enabled/openproject   → 127.0.0.1:8081
 ```
 
 ## Deployment Procedures
 
 ### ERPNext Update (with custom HRMS image)
-HRMS is NOT in the official frappe/erpnext image. Custom image `erpnext-hrms:version-15` is built locally.
+HRMS is NOT in the official frappe/erpnext image. Custom image `erpnext-hrms:version-15` is used.
 
 ```bash
-ssh root@103.127.29.102 "cd /opt/erpnext/frappe_docker && \
-  # 1. Backup
-  docker compose -f compose.yaml -f overrides/compose.mariadb.yaml \
-    -f overrides/compose.redis.yaml -f overrides/compose.noproxy.yaml \
-    --env-file .env exec -T backend bench --site all backup --with-files && \
-  # 2. Pull latest base image
-  docker pull frappe/erpnext:v15 && \
-  # 3. Rebuild custom HRMS image
-  docker build -t erpnext-hrms:version-15 -f /opt/erpnext/Dockerfile /opt/erpnext/ && \
-  # 4. Restart with new image (never pull — use local)
-  docker compose -f compose.yaml -f overrides/compose.mariadb.yaml \
-    -f overrides/compose.redis.yaml -f overrides/compose.noproxy.yaml \
-    --env-file .env up -d --pull never && \
-  # 5. Run migrations
-  docker compose -f compose.yaml -f overrides/compose.mariadb.yaml \
-    -f overrides/compose.redis.yaml -f overrides/compose.noproxy.yaml \
-    --env-file .env exec -T backend bench --site erp.vsjailabs.in migrate"
+ssh -i ~/.ssh/id_github_vsjailabs root@93.127.194.189
+cd /opt/erpnext/frappe_docker
+COMPOSE="docker compose -f compose.yaml -f overrides/compose.mariadb.yaml -f overrides/compose.redis.yaml -f overrides/compose.noproxy.yaml -f overrides/compose.hrms.yaml --env-file .env"
+
+# 1. Backup
+$COMPOSE exec -T backend bench --site erp.vsjailabs.in backup --with-files
+
+# 2. Update HRMS in backend container
+$COMPOSE exec -T backend bash -c 'cd /home/frappe/frappe-bench && bench get-app hrms --branch version-15 && pip install -e apps/hrms'
+
+# 3. Rebuild assets + copy to shared volume
+$COMPOSE exec -T backend bench build --app hrms
+$COMPOSE exec -T backend bash -c 'rm -rf /home/frappe/frappe-bench/sites/assets/hrms && cp -r /home/frappe/frappe-bench/apps/hrms/hrms/public /home/frappe/frappe-bench/sites/assets/hrms'
+
+# 4. Commit backend as new image
+docker commit frappe_docker-backend-1 erpnext-hrms:version-15
+
+# 5. Recreate all containers (--pull never = use local image)
+$COMPOSE down
+$COMPOSE up -d --pull never
+
+# 6. Migrate
+$COMPOSE exec -T backend bench --site erp.vsjailabs.in migrate
+
+# 7. Clear cache
+$COMPOSE exec -T backend bench --site erp.vsjailabs.in clear-cache
 ```
 
 ### OpenProject Update
 ```bash
-ssh root@103.127.29.102 "cd /opt/openproject && \
-  docker compose pull && docker compose up -d"
-```
-
-### Versus Incident Update
-```bash
-ssh root@103.127.29.102 "cd /opt/versus-incident && \
+ssh -i ~/.ssh/id_github_vsjailabs root@93.127.194.189 "cd /opt/openproject && \
   docker compose pull && docker compose up -d"
 ```
 
 ### New Service Deployment Pattern
 ```bash
 # 1. Create directory and compose file
-ssh root@103.127.29.102 "mkdir -p /opt/<service> && cd /opt/<service>"
+mkdir -p /opt/<service>
 
 # 2. Create docker-compose.yml with 127.0.0.1:<port> binding
 
-# 3. Create Nginx site
-ssh root@103.127.29.102 "cat > /etc/nginx/sites-available/<service> << 'EOF'
+# 3. Create Nginx site + enable + SSL
+cat > /etc/nginx/sites-available/<service> << 'EOF'
 server {
     server_name <subdomain>.vsjailabs.in;
     location / {
         proxy_pass http://127.0.0.1:<port>;
         proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
     listen 80;
 }
-EOF"
+EOF
+ln -s /etc/nginx/sites-available/<service> /etc/nginx/sites-enabled/
+nginx -t && systemctl reload nginx
+certbot --nginx -d <subdomain>.vsjailabs.in --redirect --non-interactive --agree-tos -m vsjailabs@gmail.com
 
-# 4. Enable site + test + SSL
-ssh root@103.127.29.102 "ln -s /etc/nginx/sites-available/<service> /etc/nginx/sites-enabled/ && \
-  nginx -t && systemctl reload nginx && \
-  certbot --nginx -d <subdomain>.vsjailabs.in --redirect --non-interactive --agree-tos -m vsjailabs@gmail.com"
+# 4. Start containers
+cd /opt/<service> && docker compose up -d
 
-# 5. Start containers
-ssh root@103.127.29.102 "cd /opt/<service> && docker compose up -d"
+# NOTE: Services on 127.0.0.1 behind Nginx don't need extra UFW rules (80/443 already open)
 ```
 
 ## Backup Strategy
@@ -113,46 +132,26 @@ ssh root@103.127.29.102 "cd /opt/<service> && docker compose up -d"
 |---|---|---|---|---|
 | ERPNext | 2 AM daily | `bench backup --with-files` | In-container | `/var/log/erpnext-backup.log` |
 | OpenProject | 3 AM daily | pg_dump + assets tar | 30 days | `/var/log/openproject-backup.log` |
-| Versus Incident | Not configured | — | — | — |
-
-### Manual Backup
-```bash
-# ERPNext
-ssh root@103.127.29.102 "cd /opt/erpnext/frappe_docker && \
-  docker compose -f compose.yaml -f overrides/compose.mariadb.yaml \
-  -f overrides/compose.redis.yaml -f overrides/compose.noproxy.yaml \
-  --env-file .env exec -T backend bench --site all backup --with-files"
-
-# OpenProject
-ssh root@103.127.29.102 "bash /opt/openproject/scripts/backup.sh"
-```
 
 ## Monitoring Checklist
-Quick health check command:
 ```bash
-ssh root@103.127.29.102 "echo '--- Docker ---' && docker ps --format 'table {{.Names}}\t{{.Status}}' && \
+ssh -i ~/.ssh/id_github_vsjailabs root@93.127.194.189 "echo '--- Docker ---' && docker ps --format 'table {{.Names}}\t{{.Status}}' && \
   echo '--- Disk ---' && df -h / && echo '--- Memory ---' && free -h && \
   echo '--- HTTP ---' && curl -s -o /dev/null -w 'ERPNext: %{http_code}\n' https://erp.vsjailabs.in && \
   curl -s -o /dev/null -w 'OpenProject: %{http_code}\n' https://pm.vsjailabs.in && \
-  curl -s -o /dev/null -w 'Versus: %{http_code}\n' https://incidents.vsjailabs.in"
+  echo '--- Security ---' && ufw status | head -3 && \
+  fail2ban-client status sshd | grep 'Currently banned'"
 ```
 
 ## Rollback Procedures
 
 ### ERPNext
 ```bash
-# 1. Stop current
-docker compose ... down
-# 2. Restore from bench backup
-docker compose ... exec -T backend bench --site erp.vsjailabs.in restore <backup-file>
-# 3. Restart
-docker compose ... up -d
-```
-
-### General Docker
-```bash
-# Revert to previous image
-docker compose ... down
-# Edit compose to pin previous image tag
-docker compose ... up -d
+COMPOSE="docker compose -f compose.yaml -f overrides/compose.mariadb.yaml -f overrides/compose.redis.yaml -f overrides/compose.noproxy.yaml -f overrides/compose.hrms.yaml --env-file .env"
+# 1. Restore from backup
+$COMPOSE exec -T backend bench --site erp.vsjailabs.in restore <backup-file> --db-root-password "$DB_PASSWORD" --with-public-files <files.tar> --with-private-files <private.tar>
+# 2. Migrate
+$COMPOSE exec -T backend bench --site erp.vsjailabs.in migrate
+# 3. Clear cache
+$COMPOSE exec -T backend bench --site erp.vsjailabs.in clear-cache
 ```
