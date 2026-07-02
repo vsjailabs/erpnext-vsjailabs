@@ -143,6 +143,23 @@ ssh -i ~/.ssh/id_github_vsjailabs root@93.127.194.189 "echo '--- Docker ---' && 
   fail2ban-client status sshd | grep 'Currently banned'"
 ```
 
+## Disk Optimization (periodic — safe for running apps)
+
+Docker build cache grows 10+ GB after custom image builds. Run monthly or when disk > 30%.
+
+```bash
+ssh -i ~/.ssh/id_github_vsjailabs root@93.127.194.189 "
+  docker builder prune -a -f && \
+  docker volume prune -f && \
+  apt clean && \
+  journalctl --vacuum-size=10M && \
+  echo '--- Result ---' && df -h /"
+```
+
+⚠️ Do NOT run `docker system prune -a` — it removes unused images including `erpnext-hrms:version-15`.
+⚠️ Do NOT run `docker volume prune` while containers are stopped (`docker compose down`) — active volumes temporarily detach.
+⚠️ Keep `frappe/erpnext:v15` base image — configurator service references it.
+
 ## Rollback Procedures
 
 ### ERPNext

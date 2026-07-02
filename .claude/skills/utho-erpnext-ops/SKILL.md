@@ -122,6 +122,12 @@ $COMPOSE exec -T backend bench --site erp.vsjailabs.in clear-cache
 | ERPNext | 2 AM daily | `bench backup --with-files` | `/var/log/erpnext-backup.log` |
 | OpenProject | 3 AM daily | pg_dump + assets tar (30-day retention) | `/var/log/openproject-backup.log` |
 
+## Disk Cleanup (safe — no impact on running apps)
+```bash
+ssh -i ~/.ssh/id_github_vsjailabs root@93.127.194.189 "docker builder prune -a -f && docker volume prune -f && apt clean && journalctl --vacuum-size=10M && df -h /"
+```
+⚠️ Do NOT use `docker system prune -a` (removes custom images). Do NOT prune volumes while containers are down.
+
 ## Monitoring
 ```bash
 ssh -i ~/.ssh/id_github_vsjailabs root@93.127.194.189 "echo '--- Docker ---' && docker ps --format 'table {{.Names}}\t{{.Status}}' && \
