@@ -110,11 +110,14 @@ $COMPOSE exec -T backend bench --site erp.vsjailabs.in clear-cache
 - OpenProject: `/etc/nginx/sites-available/openproject` → `127.0.0.1:8081`
 - Re-provision SSL: `certbot --nginx --non-interactive --agree-tos --email vsjailabs@gmail.com -d erp.vsjailabs.in --redirect`
 
-## Security Controls
+## Security Controls (updated 2026-07-04)
 - **SSH:** Key-only (`PermitRootLogin prohibit-password`, `PasswordAuthentication no`)
 - **Firewall:** UFW — 22/80/443 only
-- **fail2ban:** SSH (3 retries → 24hr ban), Nginx jails active
-- **Config:** `/etc/fail2ban/jail.local`, `/etc/ssh/sshd_config`
+- **fail2ban:** 4 jails: sshd (3/24hr), nginx-http-auth (5/1hr), nginx-limit-req (10/1hr), niramcare-auth (10/1hr)
+- **Security headers:** All 6 sites: X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, HSTS
+- **Rate limiting:** NiramCare `/api/` — 10 req/s per IP (burst 20)
+- **Auto updates:** `unattended-upgrades` enabled
+- **Config:** `/etc/fail2ban/jail.local`, `/etc/ssh/sshd_config`, `/etc/fail2ban/filter.d/niramcare-auth.conf`
 
 ## Backup Strategy
 | Service | Schedule | Method | Log |
