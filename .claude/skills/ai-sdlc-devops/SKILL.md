@@ -25,9 +25,12 @@ Automate deployments, infrastructure management, monitoring, backups, and CI/CD 
   - `nginx-limit-req`: 10 retries → 1hr ban
   - `niramcare-auth`: 10 retries on /api/ 401/403 → 1hr ban
 - **Security headers:** All 6 sites have X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, HSTS
+- **Nginx:** `server_tokens off` — version hidden
 - **Rate limiting:** NiramCare `/api/` — 10 req/s per IP (burst 20)
+- **SSH hardening:** `X11Forwarding no`, `LoginGraceTime 30`, `ClientAliveInterval 300`, cloud-init password auth fixed
+- **Kernel hardening:** `send_redirects=0`, `accept_source_route=0`, `log_martians=1` (`/etc/sysctl.d/99-security.conf`)
 - **Auto updates:** `unattended-upgrades` enabled for security patches
-- **Config files:** `/etc/fail2ban/jail.local`, `/etc/ssh/sshd_config`, `/etc/fail2ban/filter.d/niramcare-auth.conf`
+- **Config files:** `/etc/fail2ban/jail.local`, `/etc/ssh/sshd_config`, `/etc/fail2ban/filter.d/niramcare-auth.conf`, `/etc/sysctl.d/99-security.conf`
 
 ```bash
 # Check firewall

@@ -111,13 +111,14 @@ $COMPOSE exec -T backend bench --site erp.vsjailabs.in clear-cache
 - Re-provision SSL: `certbot --nginx --non-interactive --agree-tos --email vsjailabs@gmail.com -d erp.vsjailabs.in --redirect`
 
 ## Security Controls (updated 2026-07-04)
-- **SSH:** Key-only (`PermitRootLogin prohibit-password`, `PasswordAuthentication no`)
+- **SSH:** Key-only, `X11Forwarding no`, `LoginGraceTime 30`, `ClientAliveInterval 300`, cloud-init fixed
 - **Firewall:** UFW — 22/80/443 only
 - **fail2ban:** 4 jails: sshd (3/24hr), nginx-http-auth (5/1hr), nginx-limit-req (10/1hr), niramcare-auth (10/1hr)
-- **Security headers:** All 6 sites: X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, HSTS
+- **Nginx:** `server_tokens off`, security headers + HSTS on all 6 sites
 - **Rate limiting:** NiramCare `/api/` — 10 req/s per IP (burst 20)
+- **Kernel:** `send_redirects=0`, `accept_source_route=0`, `log_martians=1`
 - **Auto updates:** `unattended-upgrades` enabled
-- **Config:** `/etc/fail2ban/jail.local`, `/etc/ssh/sshd_config`, `/etc/fail2ban/filter.d/niramcare-auth.conf`
+- **Config:** `/etc/fail2ban/jail.local`, `/etc/ssh/sshd_config`, `/etc/sysctl.d/99-security.conf`
 
 ## Backup Strategy
 | Service | Schedule | Method | Log |
