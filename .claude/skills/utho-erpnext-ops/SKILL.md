@@ -15,7 +15,7 @@ The Hostinger VPS hosts **three** live apps: **ERPNext v15 LTS** (frappe_docker)
 - **SSL:** Let's Encrypt, certbot auto-renew
 - **Versions (2026-07-01):** Frappe 15.112.1, ERPNext 15.113.0, HRMS 15.62.0 (fresh v15 LTS install 2026-06-24)
 - **DB password:** `VsjErp#Db#2026#Fresh`
-- **State:** Fresh install — no employees, payroll, or HRMS data. Setup wizard pending.
+- **State:** 6 employees, Holiday List (India 2026, 48 days), Leave Policy configured. Salary/Payroll pending.
 
 ## SSH access
 Key-based only (password auth disabled):
@@ -113,9 +113,8 @@ $COMPOSE exec -T backend bench --site erp.vsjailabs.in clear-cache
 ## Security Controls (updated 2026-07-04)
 - **SSH:** Key-only, `X11Forwarding no`, `LoginGraceTime 30`, `ClientAliveInterval 300`, cloud-init fixed
 - **Firewall:** UFW — 22/80/443 only
-- **fail2ban:** 4 jails: sshd (3/24hr), nginx-http-auth (5/1hr), nginx-limit-req (10/1hr), niramcare-auth (10/1hr)
-- **Nginx:** `server_tokens off`, security headers + HSTS on all 6 sites
-- **Rate limiting:** NiramCare `/api/` — 10 req/s per IP (burst 20)
+- **fail2ban:** 3 jails: sshd (3/24hr), nginx-http-auth (5/1hr), nginx-limit-req (10/1hr)
+- **Nginx:** `server_tokens off`, security headers + HSTS on all 5 sites
 - **Kernel:** `send_redirects=0`, `accept_source_route=0`, `log_martians=1`
 - **Auto updates:** `unattended-upgrades` enabled
 - **Config:** `/etc/fail2ban/jail.local`, `/etc/ssh/sshd_config`, `/etc/sysctl.d/99-security.conf`
@@ -177,28 +176,41 @@ curl -b /tmp/erp_cookies.txt -X PUT "https://erp.vsjailabs.in/api/resource/..." 
   -H "X-Frappe-CSRF-Token: $SID" -H "Content-Type: application/json" -d '{...}'
 ```
 
-## Salary Structure — "VSJ Standard"
-| Component | Formula |
-|---|---|
-| Basic | `base * 0.5` |
-| HRA | `base * 0.2` |
-| Special Allowance | `base * 0.3` |
-| PF (deduction) | `base * 0.5 * 0.12` |
-| PT (deduction) | ₹200 fixed |
+## Holiday List & Leave (configured 2026-07-06)
 
-`base` = CTC / 12.
+### Holiday List — "India Holidays 2026"
+- **Period:** 2026-01-01 to 2026-12-31, Country: India
+- **Weekly off:** Sunday (auto-added)
+- **2nd & 4th Saturday:** Every month as holidays
+- **National holidays:** 24 gazetted (Republic Day, Independence Day, Diwali, etc.)
+- **Total:** 48 holidays (excl Sundays added via weekly off)
+- **Linked to:** Company (default) + all 6 employees
+
+### Leave Policy — "Standard Leave Policy 2026" (HR-LPOL-2026-00001)
+| Leave Type | Annual | Carry Forward |
+|---|---|---|
+| Casual Leave | 12 | No |
+| Sick Leave | 12 | No |
+| Privilege Leave | 15 | Yes |
+
+- **Leave Period:** HR-LPR-2026-00001 (2026-01-01 to 2026-12-31)
+- **Assignments:** All 6 employees, submitted. Leaves pro-rated (assigned mid-year).
+- v15 uses `holiday_list` field on Employee/Company directly (NOT Holiday List Assignment doctype from v16).
+
+## Salary Structure — NOT YET CONFIGURED
+Previous v16 had "VSJ Standard-1" (Basic 50% + HRA 20% + SA 30%, PT ₹200) and "VSJ Contract Hourly". Needs to be recreated for v15.
 
 ## Key gotchas
 - **Payroll Entry submit flow:** Never create salary slips manually before submitting PE — ERPNext creates them internally.
 - **Suspended employee:** Temporarily activate → create slip → restore status.
-- **Holiday List Assignment mandatory (v16):** `Holiday List Assignment` doctype must exist (submitted) for each employee AND company. The `holiday_list` field on Employee/Company is IGNORED by HRMS v16.
+- **v15 Holiday List:** Uses `holiday_list` field on Employee/Company. v16's `Holiday List Assignment` doctype does NOT exist in v15.
 - **Naming series reset:** `bench console` → `frappe.db.sql("UPDATE tabSeries SET current=0 WHERE name='HR-PRUN-2026-'")`
 - **apps.txt must include hrms:** After upgrades/rebuilds, `echo hrms >> sites/apps.txt` + clear-cache. Without it, HRMS doctypes throw "Module Payroll not found".
 - **Bench console pipe pattern:** Use `echo "y" | bench --site erp.vsjailabs.in console << PYEND` for programmatic operations. REST API cookies and direct python both fail.
 - **Salary Structure set_name:** Use `ss.insert(ignore_permissions=True, set_name="VSJ Standard")` — autoname is "Prompt".
 
 ## User Account Management
-- **10 employee users created** (2026-06-21). All linked via `user_id` on Employee doctype.
+- **v15 LTS:** User accounts NOT yet created for 6 employees. Pending setup.
 - Temp password convention: `Vsj@2026#ERP!` (ERPNext), `Vsj@2026#User!` (OpenProject)
 - Super admins: `admin@vsjailabs.com` (Satyam/CTO), `sarita.balwant@vsjailabs.com` (Sarita/CFO) — System Manager + Administrator + Accounts Manager
 - C-suite (CEO/COO): HR Manager + HR User

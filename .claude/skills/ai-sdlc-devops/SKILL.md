@@ -19,18 +19,16 @@ Automate deployments, infrastructure management, monitoring, backups, and CI/CD 
 ### Security Controls
 - **SSH:** Key-only auth (`PermitRootLogin prohibit-password`, `PasswordAuthentication no`, `MaxAuthTries 3`)
 - **Firewall:** UFW active — allow 22/tcp, 80/tcp, 443/tcp only
-- **fail2ban:** Active with 4 jails:
+- **fail2ban:** Active with 3 jails:
   - `sshd`: 3 retries → 24hr ban
   - `nginx-http-auth`: 5 retries → 1hr ban
   - `nginx-limit-req`: 10 retries → 1hr ban
-  - `niramcare-auth`: 10 retries on /api/ 401/403 → 1hr ban
-- **Security headers:** All 6 sites have X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, HSTS
+- **Security headers:** All 5 sites have X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, HSTS
 - **Nginx:** `server_tokens off` — version hidden
-- **Rate limiting:** NiramCare `/api/` — 10 req/s per IP (burst 20)
 - **SSH hardening:** `X11Forwarding no`, `LoginGraceTime 30`, `ClientAliveInterval 300`, cloud-init password auth fixed
 - **Kernel hardening:** `send_redirects=0`, `accept_source_route=0`, `log_martians=1` (`/etc/sysctl.d/99-security.conf`)
 - **Auto updates:** `unattended-upgrades` enabled for security patches
-- **Config files:** `/etc/fail2ban/jail.local`, `/etc/ssh/sshd_config`, `/etc/fail2ban/filter.d/niramcare-auth.conf`, `/etc/sysctl.d/99-security.conf`
+- **Config files:** `/etc/fail2ban/jail.local`, `/etc/ssh/sshd_config`, `/etc/sysctl.d/99-security.conf`
 
 ```bash
 # Check firewall
@@ -52,7 +50,6 @@ ssh -i ~/.ssh/id_github_vsjailabs root@93.127.194.189 "fail2ban-client unban <IP
 | Portfolio | 1 container | 3018 | portfolio.vsjailabs.in | aksatyam-portfolio |
 | VSJ Website | 1 container | 3017 | vsjailabs.com | vsj-website |
 | Aksatyam.dev | 1 container (shared w/ portfolio) | 3018 | aksatyam.dev | aksatyam-portfolio |
-| NiramCare Staging | 4 containers (backend, frontend, postgres, redis) | 3000/8082 | stage.niramcare.com | Next.js + Spring Boot |
 | Nginx | Host-level | 80/443 | All domains | Reverse proxy + Let's Encrypt |
 
 ### Docker Image
