@@ -18,6 +18,9 @@ versus-incident/data/
 # Backups (contain DB dumps with credentials)
 backups/
 
+# Reports/Exports
+*.xlsx
+
 # OS
 .DS_Store
 Thumbs.db

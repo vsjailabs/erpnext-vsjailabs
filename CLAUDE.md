@@ -6,6 +6,7 @@ ERPNext v15 LTS deployed on Hostinger VPS via Docker Compose (frappe_docker) wit
 Production environment with hardened SSH, UFW firewall, fail2ban, automated backups, and Let's Encrypt SSL.
 
 **LIVE SERVER:** Hostinger VPS 93.127.194.189 — Frappe 15.112.1, ERPNext 15.113.0, HRMS 15.62.0.
+**MULTI-APP SERVER:** 9 apps / 22 containers / 11 Nginx vhosts / 11 SSL certs (as of 2026-08-22).
 **GCP LEGACY:** Original GCP deployment decommissioned. Terraform files retained for reference.
 
 ## Architecture
@@ -54,7 +55,7 @@ The outer Nginx `Host` header MUST match the directory name under `/sites/`, not
 - **Fresh deploy with domain**: site created as `erp.vsjailabs.in` → `Host: erp.vsjailabs.in` (startup.sh handles this)
 - **Migrated from IP-only**: site directory is still `erp.localhost` → `Host: erp.localhost` (even though public domain is different)
 
-Current live state: site directory = `erp.localhost`, public domain = `erp.vsjailabs.in`, Host header = `erp.localhost`.
+Current live state: site directory = `erp.vsjailabs.in`, public domain = `erp.vsjailabs.in`, Host header = `erp.vsjailabs.in`.
 
 ### Secret Manager needs retry logic in startup.sh
 The `get_secret()` function retries 5 times with 10s backoff. On first boot, the API may not be ready. If secrets fail, MariaDB gets initialized with fallback passwords and requires a full data wipe to fix.
@@ -104,14 +105,14 @@ Always run `bench clear-cache` after changes.
 ## Hostinger VPS (LIVE — migrated from Utho 2026-06-20)
 
 **Server:** 93.127.194.189 (Hostinger, India DC), Ubuntu 24.04, 2 vCPU / 8 GB / 96 GB.
-**Services:** ERPNext (erp.vsjailabs.in) + OpenProject (pm.vsjailabs.in) + Portfolio (portfolio.vsjailabs.in).
+**Services:** ERPNext, OpenProject, VSJ Website, Aksatyam Portfolio, NexaTech, CloudOne, Jimmy Collection, TPE Renewal, SWAG Illustration, Portfolio (static).
 **Versions:** Frappe 15.112.1, ERPNext 15.113.0, HRMS 15.62.0. Fresh install 2026-06-24 (wiped v16 data).
-**Custom image:** `erpnext-hrms:version-15` (local). All 6 services use it via `compose.hrms.yaml`.
+**Custom image:** `erpnext-hrms:version-15` (local). All 6 ERPNext services use it via `compose.hrms.yaml`.
 **Admin:** Administrator / TempAdmin2026.
-**Data:** Fresh install — no employees, payroll, or HRMS data. Setup wizard pending.
+**Data:** 9 employees, Holiday List, Leave Policy configured. Salary Structures pending. Accounting: 35 JVs, 55 PEs, 27 PIs (all submitted, no drafts/cancelled as of 2026-08-22).
 
 ### Server Security (hardened)
-- **SSH:** Key-only auth (`PermitRootLogin prohibit-password`, `PasswordAuthentication no`). `ssh -i ~/.ssh/id_github_vsjailabs root@93.127.194.189`
+- **SSH:** Key-only auth (`PermitRootLogin prohibit-password`, `PasswordAuthentication no`). `ssh -i ~/.ssh/hostinger_vsjailabs -o IdentitiesOnly=yes root@93.127.194.189`
 - **Firewall:** UFW active — ports 22, 80, 443 only.
 - **fail2ban:** SSH jail (3 retries → 24hr ban), Nginx jails active. Config: `/etc/fail2ban/jail.local`.
 - **Emergency access:** Hostinger VNC web console.
@@ -125,7 +126,7 @@ Always use `--pull never` with `up -d` — custom image is local only.
 
 ### MariaDB Direct Query
 ```bash
-... exec -T db mariadb -u root -pVsjErp#Db#2026#Utho _c7e31ac4989afd0a -N -e "<SQL>"
+... exec -T db mariadb -u root -pVsjErp#Db#2026#Fresh _c7e31ac4989afd0a -N -e "<SQL>"
 ```
 
 ### GCP/Utho Decommission

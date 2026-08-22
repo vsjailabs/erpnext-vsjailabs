@@ -1,6 +1,6 @@
 ---
 name: utho-erpnext-ops
-description: Operate the LIVE VSJ AI Labs apps on the Hostinger VPS (93.127.194.189) — ERPNext v15 LTS (https://erp.vsjailabs.in) AND OpenProject (https://pm.vsjailabs.in). Use for SSH access, Docker/Compose commands, backups, restore, SSL, branding, SMTP, user management, and troubleshooting this specific server. Triggers when the user mentions the server, erp.vsjailabs.in, pm.vsjailabs.in, OpenProject, ERPNext ops, backups, or "the live apps".
+description: Operate the LIVE VSJ AI Labs apps on the Hostinger VPS (93.127.194.189) — 9 apps including ERPNext v15 LTS, OpenProject, and client projects. Use for SSH access, Docker/Compose commands, backups, restore, SSL, branding, SMTP, user management, and troubleshooting. Triggers when the user mentions the server, erp.vsjailabs.in, pm.vsjailabs.in, any hosted domain, ERPNext ops, backups, or "the live apps".
 ---
 
 # Hostinger Server Operations (VSJ AI Labs)
@@ -15,12 +15,28 @@ The Hostinger VPS hosts **three** live apps: **ERPNext v15 LTS** (frappe_docker)
 - **SSL:** Let's Encrypt, certbot auto-renew
 - **Versions (2026-07-01):** Frappe 15.112.1, ERPNext 15.113.0, HRMS 15.62.0 (fresh v15 LTS install 2026-06-24)
 - **DB password:** `VsjErp#Db#2026#Fresh`
-- **State:** 6 employees, Holiday List (India 2026, 48 days), Leave Policy configured. Salary/Payroll pending.
+- **State:** 9 employees (all Active), Holiday List configured, Leave Policy configured. Salary Structures pending. Accounting clean (2026-08-22).
+
+## All hosted apps (as of 2026-08-22)
+| App | Domain | Port | Containers |
+|-----|--------|------|------------|
+| ERPNext v15 LTS | erp.vsjailabs.in | 8080 | 9 |
+| OpenProject v15 | pm.vsjailabs.in | 8081 | 1 |
+| VSJ Website | vsjailabs.com | 3017 | 1 |
+| Aksatyam Portfolio | aksatyam.dev | 3018 | 1 |
+| NexaTech Website | nexatechsol.in, nexatech.vsjailabs.in | 3019 | 1 |
+| CloudOne | cloudone.vsjailabs.com | 3000 | 2 |
+| Jimmy Collection | jc.vsjailabs.in | 3021 | 5 |
+| TPE Renewal | renewal.vsjailabs.com | 3022 | 1 |
+| SWAG Illustration | illustration.vsjailabs.com | 8000 | 1 |
+| Portfolio | portfolio.vsjailabs.in | static | 0 |
+
+Total: 22 containers, 11 Nginx vhosts, 11 SSL certs.
 
 ## SSH access
-Key-based only (password auth disabled):
+Key-based only (password auth disabled). **MUST use `-o IdentitiesOnly=yes`** to avoid fail2ban bans from SSH agent offering wrong keys.
 ```bash
-ssh -i ~/.ssh/id_github_vsjailabs root@93.127.194.189
+ssh -i ~/.ssh/hostinger_vsjailabs -o IdentitiesOnly=yes root@93.127.194.189
 ```
 
 ## Docker Compose — ALWAYS all 5 files + `--pull never`
@@ -42,7 +58,7 @@ docker compose -f compose.yaml \
 
 ## Common tasks
 - **Health:** `curl -s https://erp.vsjailabs.in/api/method/ping` → `{"message":"pong"}`
-- **Container status:** `docker ps --format '{{.Names}}: {{.Status}}'` (expect 10: 9 ERPNext + 1 OpenProject)
+- **Container status:** `docker ps --format '{{.Names}}: {{.Status}}'` (expect 22 containers across all apps)
 - **Bench command:** `... exec -T backend bench --site erp.vsjailabs.in <cmd>`
 - **Manual backup:** `... exec -T backend bench --site all backup --with-files`
 - **Restore (NOTE flags):**
@@ -50,20 +66,19 @@ docker compose -f compose.yaml \
   (use `.env` `DB_PASSWORD` as root password; this build does NOT accept `--with-files`)
 - **Clear cache:** `... exec -T backend bench --site erp.vsjailabs.in clear-cache`
 - **Email (Zoho):** Email Domain `vsjailabs.com` + Email Account `Zoho Outgoing` (default sending) — `smtp.zoho.in:465` SSL, `imap.zoho.in:993` SSL, from `admin@vsjailabs.com`. Reconfigured 2026-06-21 (lost during v16 migration).
-- **HRMS:** `hrms 16.10.0` installed. Modules: HR + Payroll. Employee naming = series `VSJAL-EMP-.####` (company abbreviation prefix). Leaders (CEO/CTO/COO/CFO) = 0001–0004. 11 employees (10 active + 1 left).
+- **HRMS:** `hrms 16.10.0` installed. Modules: HR + Payroll. Employee naming = series `HR-EMP-.#####`. 9 employees (HR-EMP-00001 to 00009, all Active).
 - **Departments:** Management, Operations, Accounts, R&D, Quality Management (all suffixed `- VSJAL`).
 - **Branches:** Head Office - Bihar (all current employees), Branch Office - Gurugram (for future hires).
 - **Users:** 10 employee user accounts. Temp password: `Vsj@2026#ERP!`. Super admins: `admin@vsjailabs.com` (Satyam/CTO), `sarita.balwant@vsjailabs.com` (Sarita/CFO) — System Manager + Administrator roles.
 - **Salary Structures:** "VSJ Standard" (submitted) for full-time staff, base ₹14,326 (Bihar Skilled Min Wage). "VSJ Contract Hourly" (submitted) for contract, ₹200/hr max 100 hrs = ₹20,000/mo.
 - **Holiday List:** `VSJ AI Labs - FY 2026-27` (Apr 2026 – Mar 2027) — 65 days: 16 gazetted + 49 Sundays. Set as company default + all employees.
-- **Holiday List Assignments (HRMS v16 mandatory):** 11 assignments (HR-HLA-2026-00001 to 00011) — 1 company + 10 employees, all submitted. ⚠️ HRMS v16 ignores `holiday_list` field on Employee/Company — only `Holiday List Assignment` doctype is checked.
-- **Leave Policies:** Full-Time (`HR-LPOL-2026-00001`: CL 12 + SL 8 + PL 12), Contract (`HR-LPOL-2026-00002`: CL 12 + SL 6). All 10 employees have submitted assignments with pro-rated allocations.
-- **Leave Types:** CL (no carry-fwd, max 2 consecutive), SL (no carry-fwd), PL/EL (carry-fwd max 30, earned monthly, encashable), Maternity (182 days), LWP, Compensatory Off.
+- **Leave Policies:** Standard (`HR-LPOL-2026-00001`: CL 12 + SL 12 + PL 15). 6 Leave Policy Assignments (submitted). 18 Leave Allocations (submitted, pro-rated).
+- v15 uses `holiday_list` field on Employee/Company directly (NOT Holiday List Assignment doctype from v16).
 - **Salary Component GL Accounts:** All 9 components mapped. Earnings → `Salary - VSJAL`, Deductions → `TDS on Salary Payable - VSJAL`.
 - **Payroll Payable Account:** `Payroll Payable - VSJAL` (account_type = "Payable"). Must be set before first payroll run.
 - **June 2026 Payroll:** HR-PRUN-2026-00002 (Submitted). 4 salary slips: Chhavi ₹20K (contract), Sohel ₹14,126, Anisha ₹14,126, Juli ₹6,780 (pro-rated). Total net: ₹55,032.48. No PF (startup <20 employees, not EPF registered). Salary structure amended to "VSJ Standard-1" (PF removed).
 - **Sangeeta Balwant (VSJAL-EMP-0011):** Contract consultant, Apr 13 – Jul 18, 2026 (Left). 220 hrs × ₹400/hr = ₹88,000. Retroactive payroll across 4 PEs: Apr ₹16,400 (HR-PRUN-2026-00003), May ₹28,000 (00005), Jun ₹27,200 (00006), Jul ₹16,400 (00007). SSA base updated via MariaDB before each PE. No user account.
-- **DB direct query:** `... exec -T db mariadb -u root -pVsjErp#Db#2026#Utho _c7e31ac4989afd0a -N -e "<SQL>"`
+- **DB direct query:** `... exec -T db mariadb -u root -pVsjErp#Db#2026#Fresh _c7e31ac4989afd0a -N -e "<SQL>"`
 - **apps.txt gotcha:** After upgrade/rebuild, verify `sites/apps.txt` contains `hrms`. Missing = "Module Payroll not found" errors.
 
 ## Updating ERPNext / HRMS
@@ -72,7 +87,7 @@ docker compose -f compose.yaml \
 
 ### Update procedure
 ```bash
-ssh -i ~/.ssh/id_github_vsjailabs root@93.127.194.189
+ssh -i ~/.ssh/hostinger_vsjailabs -o IdentitiesOnly=yes root@93.127.194.189
 cd /opt/erpnext/frappe_docker
 COMPOSE="docker compose -f compose.yaml -f overrides/compose.mariadb.yaml -f overrides/compose.redis.yaml -f overrides/compose.noproxy.yaml -f overrides/compose.hrms.yaml --env-file .env"
 
@@ -127,13 +142,13 @@ $COMPOSE exec -T backend bench --site erp.vsjailabs.in clear-cache
 
 ## Disk Cleanup (safe — no impact on running apps)
 ```bash
-ssh -i ~/.ssh/id_github_vsjailabs root@93.127.194.189 "docker builder prune -a -f && docker volume prune -f && apt clean && journalctl --vacuum-size=10M && df -h /"
+ssh -i ~/.ssh/hostinger_vsjailabs -o IdentitiesOnly=yes root@93.127.194.189 "docker builder prune -a -f && docker volume prune -f && apt clean && journalctl --vacuum-size=10M && df -h /"
 ```
 ⚠️ Do NOT use `docker system prune -a` (removes custom images). Do NOT prune volumes while containers are down.
 
 ## Monitoring
 ```bash
-ssh -i ~/.ssh/id_github_vsjailabs root@93.127.194.189 "echo '--- Docker ---' && docker ps --format 'table {{.Names}}\t{{.Status}}' && \
+ssh -i ~/.ssh/hostinger_vsjailabs -o IdentitiesOnly=yes root@93.127.194.189 "echo '--- Docker ---' && docker ps --format 'table {{.Names}}\t{{.Status}}' && \
   echo '--- Disk ---' && df -h / && echo '--- Memory ---' && free -h && \
   echo '--- HTTP ---' && curl -s -o /dev/null -w 'ERPNext: %{http_code}\n' https://erp.vsjailabs.in && \
   curl -s -o /dev/null -w 'OpenProject: %{http_code}\n' https://pm.vsjailabs.in && \
