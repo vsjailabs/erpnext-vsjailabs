@@ -109,7 +109,7 @@ Always run `bench clear-cache` after changes.
 **Versions:** Frappe 15.112.1, ERPNext 15.113.0, HRMS 15.62.0. Fresh install 2026-06-24 (wiped v16 data).
 **Custom image:** `erpnext-hrms:version-15` (local). All 6 ERPNext services use it via `compose.hrms.yaml`.
 **Admin:** Administrator / TempAdmin2026.
-**Data:** 9 employees, Holiday List, Leave Policy configured. Salary Structures pending. Accounting: 35 JVs, 55 PEs, 27 PIs (all submitted, no drafts/cancelled as of 2026-08-22).
+**Data:** 9 employees, Holiday List, Leave Policy configured. Salary Structures pending. Accounting: 37 JVs, 53 PEs, 24 PIs submitted; 20 cancelled records pending Finance approval for deletion (as of 2026-09-02).
 
 ### Server Security (hardened)
 - **SSH:** Key-only auth (`PermitRootLogin prohibit-password`, `PasswordAuthentication no`). `ssh -i ~/.ssh/hostinger_vsjailabs -o IdentitiesOnly=yes root@93.127.194.189`
